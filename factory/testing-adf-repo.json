@@ -1,0 +1,9 @@
+{
+	"name": "testing-adf-repo",
+	"location": "centralindia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "3a97b463-32cd-4588-b093-4c36777097ab",
+		"tenantId": "5ff1f48d-259b-4e6f-9432-2e8618408228"
+	}
+}
