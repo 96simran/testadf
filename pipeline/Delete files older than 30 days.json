@@ -56,7 +56,7 @@
 		],
 		"parameters": {
 			"SourceFolder": {
-				"type": "string",
+				"type": "object",
 				"defaultValue": "sourcefolder"
 			},
 			"SourceDirectory": {
