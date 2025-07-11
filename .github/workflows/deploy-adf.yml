@@ -23,5 +23,5 @@ jobs:
       with:
         resourceGroupName: 'Test-adf'
         dataFactoryName: 'QA-testing-adf'
-        armTemplateFile: './ARMTemplateForFactory.json'
-        armTemplateParametersFile: './ARMTemplateParametersForFactory.json'
+        armTemplateFile: './testing-adf-repo/ARMTemplateForFactory.json'
+        armTemplateParametersFile: './testing-adf-repo/ARMTemplateParametersForFactory.json'
