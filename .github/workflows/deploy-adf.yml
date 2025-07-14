@@ -3,7 +3,7 @@ name: Deploy ADF to QA
 on:
   push:
     branches:
-      - adf_publish  # or your release branch
+      - adf_publish
 
 jobs:
   deploy:
@@ -17,6 +17,16 @@ jobs:
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Explicit PowerShell Login (Workaround)
+      shell: pwsh
+      run: |
+        $creds = $env:AZURE_CREDENTIALS | ConvertFrom-Json
+        $securePassword = ConvertTo-SecureString $creds.clientSecret -AsPlainText -Force
+        $psCredential = New-Object System.Management.Automation.PSCredential ($creds.clientId, $securePassword)
+        Connect-AzAccount -ServicePrincipal -Credential $psCredential -Tenant $creds.tenantId -SubscriptionId $creds.subscriptionId
+      env:
+        AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
     - name: Deploy ADF resources
       uses: Azure/data-factory-deploy-action@v1.2.0
