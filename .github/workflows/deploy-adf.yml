@@ -18,6 +18,11 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+    - name: Install Az PowerShell Module
+      shell: pwsh
+      run: |
+        Install-Module -Name Az -Force -Scope CurrentUser -AllowClobber
+
     - name: Explicit PowerShell Login (Workaround)
       shell: pwsh
       run: |
