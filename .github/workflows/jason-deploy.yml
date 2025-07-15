@@ -25,9 +25,8 @@ jobs:
       # Copy selected pipeline and its dependencies
       - name: Copy selected pipeline and dependencies
         run: |
-          mkdir selected_adf_content
-          cp pipeline/${{ MoveFiles }}.json selected_adf_content/
-          # Optionally copy datasets and linked services used by the pipeline
+          mkdir -p selected_adf_content
+          cp pipeline/${{ env.PIPELINE_NAME }}.json selected_adf_content/
 
       # Authenticate with Azure
       - name: Login to Azure
@@ -53,7 +52,7 @@ jobs:
       - name: Deploy pipeline to target ADF
         run: |
           az datafactory pipeline create \
-            --factory-name <QA-testing-adf> \
-            --resource-group <Test-adf> \
-            --name ${{ MoveFiles }} \
-            --pipeline "@selected_adf_content/${{ MoveFiles }}.json"
+            --factory-name QA-testing-adf \
+            --resource-group Test-adf \
+            --name ${{ env.PIPELINE_NAME }} \
+            --pipeline "@selected_adf_content/${{ env.PIPELINE_NAME }}.json"
