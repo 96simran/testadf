@@ -43,33 +43,33 @@ jobs:
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Install Azure Data Factory Extension
-        run: |
-          az extension add --name datafactory
-      # Copy selected pipeline and its dependencies
+      # - name: Install Azure Data Factory Extension
+      #   run: |
+      #     az extension add --name datafactory
+      # # Copy selected pipeline and its dependencies
 
       - name: Copy selected pipeline and dependencies
         run: |
           mkdir -p selected_adf_content
-          cp pipeline/"Delete files older than 30 days1".json selected_adf_content/
+          cp pipeline/"MoveFiles".json selected_adf_content/
 
-      # filepath: c:\testadf\.github\workflows\jason-deploy.yml
-      - name: Deploy linked services
-        run: |
-          for file in linkedService/*.json; do
-            service_name=$(jq -r '.name' "$file")
-            properties=$(jq -r '.properties' "$file")
-            if [ "$properties" == "null" ]; then
-              echo "Error: Invalid linked service payload in $file. Skipping..."
-              continue
-            fi
-            echo "Deploying linked service: $service_name"
-            az datafactory linked-service create \
-              --factory-name QA-testing-adf \
-              --resource-group Test-adf \
-              --name "$service_name" \
-              --properties @"$file"
-          done        
+      # # filepath: c:\testadf\.github\workflows\jason-deploy.yml
+      # - name: Deploy linked services
+      #   run: |
+      #     for file in linkedService/*.json; do
+      #       service_name=$(jq -r '.name' "$file")
+      #       properties=$(jq -r '.properties' "$file")
+      #       if [ "$properties" == "null" ]; then
+      #         echo "Error: Invalid linked service payload in $file. Skipping..."
+      #         continue
+      #       fi
+      #       echo "Deploying linked service: $service_name"
+      #       az datafactory linked-service create \
+      #         --factory-name QA-testing-adf \
+      #         --resource-group Test-adf \
+      #         --name "$service_name" \
+      #         --properties @"$file"
+      #     done        
 
       # Deploy the pipeline to the target ADF
       - name: Deploy pipeline to target ADF
@@ -77,5 +77,5 @@ jobs:
           az datafactory pipeline create \
             --factory-name QA-testing-adf \
             --resource-group Test-adf \
-            --name "Delete files older than 30 days" \
-            --pipeline "@selected_adf_content/Delete files older than 30 days1.json"
+            --name "MoveFiles" \
+            --pipeline "@selected_adf_content/MoveFiles.json"
