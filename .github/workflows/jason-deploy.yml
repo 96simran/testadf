@@ -1,0 +1,58 @@
+name: Deploy Selected ADF Pipeline
+
+on:
+  push:
+    branches:
+      - main
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       pipeline_name:
+#         description: 'Name of the pipeline to deploy (case-sensitive)'
+#         required: true
+#         default: 'MyPipeline'
+
+jobs:
+  deploy-adf-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout current repo (source ADF)
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+
+      # Copy selected pipeline and its dependencies
+      - name: Copy selected pipeline and dependencies
+        run: |
+          mkdir selected_adf_content
+          cp pipeline/${{ MoveFiles }}.json selected_adf_content/
+          # Optionally copy datasets and linked services used by the pipeline
+
+      # Authenticate with Azure
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install Az PowerShell Module
+        shell: pwsh
+        run: |
+          Install-Module -Name Az -Force -Scope CurrentUser -AllowClobber
+      - name: Explicit PowerShell Login (Workaround)
+        shell: pwsh
+        run: |
+          $creds = $env:AZURE_CREDENTIALS | ConvertFrom-Json
+          $securePassword = ConvertTo-SecureString $creds.clientSecret -AsPlainText -Force
+          $psCredential = New-Object System.Management.Automation.PSCredential ($creds.clientId, $securePassword)
+          Connect-AzAccount -ServicePrincipal -Credential $psCredential -Tenant $creds.tenantId -SubscriptionId $creds.subscriptionId
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Deploy the pipeline to the target ADF
+      - name: Deploy pipeline to target ADF
+        run: |
+          az datafactory pipeline create \
+            --factory-name <QA-testing-adf> \
+            --resource-group <Test-adf> \
+            --name ${{ MoveFiles }} \
+            --pipeline "@selected_adf_content/${{ MoveFiles }}.json"
