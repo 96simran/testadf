@@ -3,7 +3,7 @@ name: Deploy ADF to QA
 on:
   push:
     branches:
-      - main
+      - adf_publish
 
 jobs:
   deploy:
