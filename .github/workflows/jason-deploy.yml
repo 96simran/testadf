@@ -14,19 +14,13 @@ on:
 #         default: 'MyPipeline'
 
 jobs:
-  deploy-adf-pipeline:
+  deploy-pipeline:
     runs-on: ubuntu-latest
 
     steps:
       # Checkout current repo (source ADF)
       - name: Checkout source repo
         uses: actions/checkout@v4
-
-# Copy selected pipeline and its dependencies
-      - name: Copy selected pipeline and dependencies
-        run: |
-          mkdir -p selected_adf_content
-          cp pipeline/"Delete files older than 30 days1".json selected_adf_content/
 
       # Authenticate with Azure
       - name: Login to Azure
@@ -38,6 +32,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module -Name Az -Force -Scope CurrentUser -AllowClobber
+
       - name: Explicit PowerShell Login (Workaround)
         shell: pwsh
         run: |
@@ -47,6 +42,25 @@ jobs:
           Connect-AzAccount -ServicePrincipal -Credential $psCredential -Tenant $creds.tenantId -SubscriptionId $creds.subscriptionId
         env:
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Deploy all linked services dynamically
+      - name: Deploy linked services
+        run: |
+          for file in linkedService/*.json; do
+            service_name=$(jq -r '.name' "$file")
+            echo "Deploying linked service: $service_name"
+            az datafactory linked-service create \
+              --factory-name QA-testing-adf \
+              --resource-group Test-adf \
+              --name "$service_name" \
+              --properties @"$file"
+          done
+
+      # Copy selected pipeline and its dependencies
+      - name: Copy selected pipeline and dependencies
+        run: |
+          mkdir -p selected_adf_content
+          cp pipeline/"Delete files older than 30 days1".json selected_adf_content/
 
       # Deploy the pipeline to the target ADF
       - name: Deploy pipeline to target ADF
