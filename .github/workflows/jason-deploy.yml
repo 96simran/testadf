@@ -53,25 +53,43 @@ jobs:
           mkdir -p selected_adf_content
           cp pipeline/"MoveFiles".json selected_adf_content/
 
-      # # filepath: c:\testadf\.github\workflows\jason-deploy.yml
-      # - name: Deploy linked services
-      #   run: |
-      #     for file in linkedService/*.json; do
-      #       service_name=$(jq -r '.name' "$file")
-      #       properties=$(jq -r '.properties' "$file")
-      #       if [ "$properties" == "null" ]; then
-      #         echo "Error: Invalid linked service payload in $file. Skipping..."
-      #         continue
-      #       fi
-      #       echo "Deploying linked service: $service_name"
-      #       az datafactory linked-service create \
-      #         --factory-name QA-testing-adf \
-      #         --resource-group Test-adf \
-      #         --name "$service_name" \
-      #         --properties @"$file"
-      #     done        
+      # Deploy linked services
+      - name: Deploy linked services
+        run: |
+          for file in linkedService/*.json; do
+            service_name=$(jq -r '.name' "$file")
+            properties=$(jq -r '.properties' "$file")
+            if [ "$properties" == "null" ]; then
+              echo "Error: Invalid linked service payload in $file. Skipping..."
+              continue
+            fi
+            echo "Deploying linked service: $service_name"
+            az datafactory linked-service create \
+              --factory-name QA-testing-adf \
+              --resource-group Test-adf \
+              --name "$service_name" \
+              --properties @"$file"
+          done
 
-      # Deploy the pipeline to the target ADF
+      # Deploy datasets
+      - name: Deploy datasets
+        run: |
+          for file in dataset/*.json; do
+            dataset_name=$(jq -r '.name' "$file")
+            properties=$(jq -r '.properties' "$file")
+            if [ "$properties" == "null" ]; then
+              echo "Error: Invalid dataset payload in $file. Skipping..."
+              continue
+            fi
+            echo "Deploying dataset: $dataset_name"
+            az datafactory dataset create \
+              --factory-name QA-testing-adf \
+              --resource-group Test-adf \
+              --name "$dataset_name" \
+              --properties @"$file"
+          done
+
+      # Deploy pipeline to target ADF
       - name: Deploy pipeline to target ADF
         run: |
           az datafactory pipeline create \
