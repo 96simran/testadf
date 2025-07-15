@@ -22,11 +22,11 @@ jobs:
       - name: Checkout source repo
         uses: actions/checkout@v4
 
-      # Copy selected pipeline and its dependencies
+# Copy selected pipeline and its dependencies
       - name: Copy selected pipeline and dependencies
         run: |
           mkdir -p selected_adf_content
-          cp pipeline/${{ env.PIPELINE_NAME }}.json selected_adf_content/
+          cp pipeline/"Delete files older than 30 days1".json selected_adf_content/
 
       # Authenticate with Azure
       - name: Login to Azure
@@ -54,5 +54,5 @@ jobs:
           az datafactory pipeline create \
             --factory-name QA-testing-adf \
             --resource-group Test-adf \
-            --name ${{ env.PIPELINE_NAME }} \
-            --pipeline "@selected_adf_content/${{ env.PIPELINE_NAME }}.json"
+            --name "Delete files older than 30 days" \
+            --pipeline "@selected_adf_content/Delete files older than 30 days1.json"
