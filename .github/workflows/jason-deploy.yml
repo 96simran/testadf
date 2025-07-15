@@ -46,7 +46,13 @@ jobs:
       - name: Install Azure Data Factory Extension
         run: |
           az extension add --name datafactory
-          
+      # Copy selected pipeline and its dependencies
+
+      - name: Copy selected pipeline and dependencies
+        run: |
+          mkdir -p selected_adf_content
+          cp pipeline/"Delete files older than 30 days1".json selected_adf_content/
+
       # filepath: c:\testadf\.github\workflows\jason-deploy.yml
       - name: Deploy linked services
         run: |
@@ -64,12 +70,6 @@ jobs:
               --name "$service_name" \
               --properties @"$file"
           done        
-
-      # Copy selected pipeline and its dependencies
-      - name: Copy selected pipeline and dependencies
-        run: |
-          mkdir -p selected_adf_content
-          cp pipeline/"Delete files older than 30 days1".json selected_adf_content/
 
       # Deploy the pipeline to the target ADF
       - name: Deploy pipeline to target ADF
