@@ -15,6 +15,9 @@ on:
       target_adf:
         description: 'Target Azure Data Factory name'
         required: true
+  push:
+    branches:
+      - main
 
 jobs:
   migrate-pipeline:
@@ -24,56 +27,66 @@ jobs:
       AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
       RESOURCE_GROUP: Test-adf
       SOURCE_ADF: QA-testing-adf
+      PIPELINE_NAME: MoveFiles
 
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Set default values for inputs (for push event)
+      - name: Set default inputs
+        if: github.event_name == 'push'
+        run: |
+          echo "pipeline_name=MoveFiles" >> $GITHUB_ENV
+          echo "input_source=default_input" >> $GITHUB_ENV
+          echo "output_source=default_output" >> $GITHUB_ENV
+          echo "target_adf=default_target_adf" >> $GITHUB_ENV
+
+      # Step 2: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Login to Azure
+      # Step 3: Login to Azure
       - name: Login to Azure
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Step 3: Export pipeline JSON from source ADF
+      # Step 4: Export pipeline JSON from source ADF
       - name: Export pipeline JSON
         run: |
           az datafactory pipeline export \
             --factory-name $SOURCE_ADF \
             --resource-group $RESOURCE_GROUP \
-            --name ${{ inputs.pipeline_name }} \
+            --name $PIPELINE_NAME \
             --output-path exported_pipeline.json
 
-      # Step 4: Modify pipeline JSON
+      # Step 5: Modify pipeline JSON
       - name: Modify pipeline JSON
         run: |
-          jq '.properties.activities[].typeProperties.source.referenceName = "${{ inputs.input_source }}" |
-              .properties.activities[].typeProperties.sink.referenceName = "${{ inputs.output_source }}"' \
+          jq '.properties.activities[].typeProperties.source.referenceName = "${{ env.input_source || inputs.input_source }}" |
+              .properties.activities[].typeProperties.sink.referenceName = "${{ env.output_source || inputs.output_source }}"' \
               exported_pipeline.json > modified_pipeline.json
 
-      # Step 5: Import pipeline JSON to target ADF
+      # Step 6: Import pipeline JSON to target ADF
       - name: Import pipeline JSON
         run: |
           az datafactory pipeline import \
-            --factory-name ${{ inputs.target_adf }} \
+            --factory-name ${{ env.target_adf || inputs.target_adf }} \
             --resource-group $RESOURCE_GROUP \
-            --name ${{ inputs.pipeline_name }} \
+            --name $PIPELINE_NAME \
             --input-path modified_pipeline.json
 
-      # Step 6: Publish pipeline
+      # Step 7: Publish pipeline
       - name: Publish pipeline
         run: |
           az datafactory pipeline create \
-            --factory-name ${{ inputs.target_adf }} \
+            --factory-name ${{ env.target_adf || inputs.target_adf }} \
             --resource-group $RESOURCE_GROUP \
-            --name ${{ inputs.pipeline_name }} \
+            --name $PIPELINE_NAME \
             --pipeline @modified_pipeline.json
 
-      # Step 7: Show job summary
+      # Step 8: Show job summary
       - name: Job Summary
         run: |
-          echo "Pipeline Name: ${{ inputs.pipeline_name }}"
-          echo "Environment: ${{ inputs.target_adf }}"
-          echo "Input Source: ${{ inputs.input_source }}"
-          echo "Output Source: ${{ inputs.output_source }}"
+          echo "Pipeline Name: $PIPELINE_NAME"
+          echo "Environment: ${{ env.target_adf || inputs.target_adf }}"
+          echo "Input Source: ${{ env.input_source || inputs.input_source }}"
+          echo "Output Source: ${{ env.output_source || inputs.output_source }}"
