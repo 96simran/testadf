@@ -23,9 +23,12 @@ jobs:
       run: |
 
         # Generate AD token using Azure credentials
-        TENANT_ID="5ff1f48d-259b-4e6f-9432-2e8618408228"
-        CLIENT_ID="ce8c3647-b76a-49fb-a947-b882be1c9139"
-        CLIENT_SECRET="fKJ8Q~FTAB3prf6uqg8KU7yVw7I3nqqmcIxUdbae"
+
+      env:
+        TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
 
         # Get token
         ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
