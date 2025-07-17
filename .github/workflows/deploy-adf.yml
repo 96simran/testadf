@@ -1,9 +1,9 @@
 name: Deploy ADF to QA
 
-on:
-  push:
-    branches:
-      - adf_publish
+# on:
+#   push:
+#     branches:
+#       - adf_publish
 
 jobs:
   deploy:
