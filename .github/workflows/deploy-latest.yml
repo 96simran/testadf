@@ -19,47 +19,35 @@ jobs:
     # - name: Checkout code
     #   uses: actions/checkout@v3
 
-    - name: Download pipeline and import
-      run: |
-
-        # Generate AD token using Azure credentials
-
+    - name: Download and deploy ADF pipeline
       env:
         TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
         CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-
-
+        SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        TARGET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        TARGET_RESOURCE_GROUP: Test-adf
+        TARGET_FACTORY_NAME: QA-testing-adf
+        TARGET_PIPELINE_NAME: MoveFiles
+      run: |
         # Get token
         ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
           -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
           "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
 
-        #export selected pipeline from adf using rest API and access token
-          SUBSCRIPTION_ID="4f3430eb-7883-4106-b578-b1542ee43cc0"
-          RESOURCE_GROUP="Test-adf"
-          FACTORY_NAME="testing-adf-repo"
-          PIPELINE_NAME="MoveFiles"
-          # Export pipeline JSON
-          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$FACTORY_NAME/pipelines/$PIPELINE_NAME?api-version=2018-06-01" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            -o pipeline.json
-                    
-        # #update dataset / linked service with input source and  dataset / linked service with output source variables
-        # jq --arg input_source "${{ secrets.INPUT_SOURCE }}" --arg output_source "${{ secrets.OUTPUT_SOURCE }}" '.properties.activities[0].inputs[0].referenceName = $input_source | .properties.activities[0].outputs[0].referenceName = $output_source' pipeline.json > updated_pipeline.json
-        
-        #import and publish updated pipeline to QA env adf
-          TARGET_SUBSCRIPTION_ID="4f3430eb-7883-4106-b578-b1542ee43cc0"
-          TARGET_RESOURCE_GROUP="Test-adf"
-          TARGET_FACTORY_NAME="QA-testing-adf"
-          TARGET_PIPELINE_NAME="MoveFiles"  
+        # Export selected pipeline from ADF using REST API and access token
+        RESOURCE_GROUP="Test-adf"
+        FACTORY_NAME="testing-adf-repo"
+        PIPELINE_NAME="MoveFiles"
 
-          # Can be same or new # Import pipeline JSON
-          curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data @pipeline.json
+        curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$FACTORY_NAME/pipelines/$PIPELINE_NAME?api-version=2018-06-01" \
+          -H "Authorization: Bearer $ACCESS_TOKEN" \
+          -H "Content-Type: application/json" \
+          -o pipeline.json
 
+        # Import and publish updated pipeline to QA environment ADF
+        curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
+          -H "Authorization: Bearer $ACCESS_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data @pipeline.json
 
- 
