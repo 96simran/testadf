@@ -1,23 +1,23 @@
 name: Migrate ADF Pipeline
 
 on:
-  workflow_dispatch:
-    inputs:
-      pipeline_name:
-        description: 'Name of the pipeline to migrate'
-        required: true
-      input_source:
-        description: 'Input source to update in the pipeline'
-        required: true
-      output_source:
-        description: 'Output source to update in the pipeline'
-        required: true
-      target_adf:
-        description: 'Target Azure Data Factory name'
-        required: true
+  # workflow_dispatch:
+  #   inputs:
+  #     pipeline_name:
+  #       description: 'Name of the pipeline to migrate'
+  #       required: true
+  #     input_source:
+  #       description: 'Input source to update in the pipeline'
+  #       required: true
+  #     output_source:
+  #       description: 'Output source to update in the pipeline'
+  #       required: true
+  #     target_adf:
+  #       description: 'Target Azure Data Factory name'
+  #       required: true
   push:
     branches:
-      - main
+      - adf_publish
 
 jobs:
   migrate-pipeline:
