@@ -9,11 +9,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    env:
-      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
-      RESOURCE_GROUP: Test-adf
-      SOURCE_ADF: QA-testing-adf
-      PIPELINE_NAME: MoveFiles
+    # env:
+    #   AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+    #   RESOURCE_GROUP: Test-adf
+    #   SOURCE_ADF: QA-testing-adf
+    #   PIPELINE_NAME: MoveFiles
 
     steps:
     # - name: Checkout code
