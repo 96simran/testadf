@@ -82,7 +82,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: adf_artifacts
-        paths: |
+        path: |
           pipeline.json
           linkedservice_*.json
           dataset_*.json  
