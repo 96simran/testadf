@@ -28,7 +28,7 @@ jobs:
         TARGET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         TARGET_RESOURCE_GROUP: Test-adf
         TARGET_FACTORY_NAME: QA-testing-adf
-        TARGET_PIPELINE_NAME: MoveFiles
+        TARGET_PIPELINE_NAME: MoveFiles1
       run: |
         # Get token
         ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
@@ -87,3 +87,33 @@ jobs:
           linkedservice_*.json
           dataset_*.json  
         
+
+          # Update input source linked services
+          OLD_LINKED_SERVICE_INPUT="devlinkinputsource"
+          NEW_LINKED_SERVICE_INPUT="qalinkputsource"
+
+          for DS_JSON in dataset_*.json
+          do
+            echo "Checking for input source linked service in $DS_JSON"
+            tmpfile=$(mktemp)
+            jq --arg OLD "$OLD_LINKED_SERVICE_INPUT" --arg NEW "$NEW_LINKED_SERVICE_INPUT" \
+              'if .properties.linkedServiceName.referenceName == $OLD 
+                then .properties.linkedServiceName.referenceName = $NEW 
+                else . end' \
+              "$DS_JSON" > "$tmpfile" && mv "$tmpfile" "$DS_JSON"
+          done
+
+          # Update output (sink) linked services
+          OLD_LINKED_SERVICE_OUTPUT="devlinkoutputsource"
+          NEW_LINKED_SERVICE_OUTPUT="qalinkoutputsource"
+
+          for DS_JSON in dataset_*.json
+          do
+            echo "Checking for output source linked service in $DS_JSON"
+            tmpfile=$(mktemp)
+            jq --arg OLD "$OLD_LINKED_SERVICE_OUTPUT" --arg NEW "$NEW_LINKED_SERVICE_OUTPUT" \
+              'if .properties.linkedServiceName.referenceName == $OLD 
+                then .properties.linkedServiceName.referenceName = $NEW 
+                else . end' \
+              "$DS_JSON" > "$tmpfile" && mv "$tmpfile" "$DS_JSON"
+          done
