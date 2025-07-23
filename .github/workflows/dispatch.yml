@@ -42,14 +42,21 @@ jobs:
           echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Export Pipeline JSON from Dev
-        id: export_pipeline
+        env:
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
         run: |
-          export ACCESS_TOKEN=${{ steps.get_token.outputs.access_token }}
-          PIPELINE_JSON=$(curl -s -X GET \
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
-            "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/${{ env.TARGET_PIPELINE_NAME }}?api-version=2018-06-01")
-          echo "$PIPELINE_JSON" > pipeline.json
+            -o pipeline.json
+
+          echo "Exported pipeline.json:"
+          cat pipeline.json
+          if grep -q '"error"' pipeline.json; then
+            echo "Failed to export pipeline! Contents of pipeline.json:"
+            cat pipeline.json
+            exit 1
+          fi  
 
       - name: Update parameters for QA
         id: update_json
@@ -85,3 +92,11 @@ jobs:
             --data @pipeline_qa.json \
             "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/${{ env.TARGET_PIPELINE_NAME }}?api-version=2018-06-01")
           echo "$RESPONSE"
+
+      - name: upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: adf_artifacts
+          path: |
+              pipeline.json
+              pipeline_qa.json
