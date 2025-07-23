@@ -67,12 +67,10 @@ jobs:
           -H "Content-Type: application/json" \
           --data @pipeline.json
 
-    # - name: upload artifacts
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: adf_artifacts
-    #     path: |
-    #       pipeline.json
-    #       linkedservice_*.json
-    #       dataset_*.json  
-        
+    - name: upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: adf_artifacts
+        path: |
+          pipeline.json
+          dataset_*.json
