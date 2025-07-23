@@ -9,12 +9,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # env:
-    #   AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
-    #   RESOURCE_GROUP: Test-adf
-    #   SOURCE_ADF: QA-testing-adf
-    #   PIPELINE_NAME: MoveFiles
-
     steps:
     # - name: Checkout code
     #   uses: actions/checkout@v3
@@ -26,42 +20,65 @@ jobs:
         CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         TARGET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        RESOURCE_GROUP: Test-adf
+        DEV_FACTORY_NAME: testing-adf-repo
         TARGET_RESOURCE_GROUP: Test-adf
         TARGET_FACTORY_NAME: QA-testing-adf
         TARGET_PIPELINE_NAME: MoveFiles1
       run: |
+        # set -e
+
         # Get token
         ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
           -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
           "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
 
-        # Export selected pipeline from ADF using REST API and access token
-        RESOURCE_GROUP="Test-adf"
-        FACTORY_NAME="testing-adf-repo"
-        PIPELINE_NAME="MoveFiles"
-
-        curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$FACTORY_NAME/pipelines/$PIPELINE_NAME?api-version=2018-06-01" \
+        # Export selected pipeline from Dev ADF
+        echo "Exporting pipeline from Dev..."
+        curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/MoveFiles?api-version=2018-06-01" \
           -H "Authorization: Bearer $ACCESS_TOKEN" \
           -H "Content-Type: application/json" \
           -o pipeline.json
-          echo pipeline.json
 
-        # Extract datasets
-        curl -X GET "https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroup}/providers/Microsoft.DataFactory/factories/{devFactoryName}/datasets/{datasetName}?api-version=2018-06-01" \
-          -H "Authorization: Bearer {access_token}" \
-          -H "Content-Type: application/json" \
-          -o dataset_{datasetName}.json
+        # Process datasets (input and output)
+        DATASETS=("BinaryDataSource_Folder1" "BinaryDataSource_File1" "BinaryDataDestination1")
+        OLD_LS_INPUT="devlinkinputsource"
+        NEW_LS_INPUT="qalinkputsource"
+        OLD_LS_OUTPUT="devlinkoutputsource"
+        NEW_LS_OUTPUT="qalinkoutputsource"
 
-        jq 'if .properties.linkedServiceName.referenceName == "devlinkinputsource" 
-            then .properties.linkedServiceName.referenceName = "qalinkputsource"
-            else . end' dataset_{datasetName}.json > tmp.json && mv tmp.json dataset_{datasetName}.json  
+        for DATASET in "${DATASETS[@]}"
+        do
+          echo "Processing dataset: $DATASET"
 
-        curl -X PUT "https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{qaResourceGroup}/providers/Microsoft.DataFactory/factories/{qaFactoryName}/datasets/{datasetName}?api-version=2018-06-01" \
-          -H "Authorization: Bearer {access_token}" \
-          -H "Content-Type: application/json" \
-          --data @dataset_{datasetName}.json
+          # Export dataset from Dev
+          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/datasets/$DATASET?api-version=2018-06-01" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -o dataset_$DATASET.json
+
+          # Update linked service references (input and output)
+          tmpfile=$(mktemp)
+          jq --arg OLDIN "$OLD_LS_INPUT" --arg NEWIN "$NEW_LS_INPUT" --arg OLDOUT "$OLD_LS_OUTPUT" --arg NEWOUT "$NEW_LS_OUTPUT" \
+            '
+            if .properties.linkedServiceName.referenceName == $OLDIN
+              then .properties.linkedServiceName.referenceName = $NEWIN
+            elif .properties.linkedServiceName.referenceName == $OLDOUT
+              then .properties.linkedServiceName.referenceName = $NEWOUT
+            else .
+            end
+            ' dataset_$DATASET.json > "$tmpfile" && mv "$tmpfile" dataset_$DATASET.json
+
+          # Import dataset into QA
+          curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/datasets/$DATASET?api-version=2018-06-01" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @dataset_$DATASET.json
+
+        done
 
         # Import and publish updated pipeline to QA environment ADF
+        echo "Deploying pipeline to QA..."
         curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
           -H "Authorization: Bearer $ACCESS_TOKEN" \
           -H "Content-Type: application/json" \
@@ -74,4 +91,3 @@ jobs:
         path: |
           pipeline.json
           dataset_*.json
-          
