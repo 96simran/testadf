@@ -56,23 +56,32 @@ jobs:
         run: |
           cat pipeline.json | \
           jq '
-            # update linkedServices/datasets parameters within activities
-            .properties.activities |= map(
-              if .type == "Copy" and .typeProperties? then
-                .typeProperties.source.parameters |= with_entries(
-                  if (.key | test("SourceStore_Location")) then .key = "QA_SourceStore_Location" elif (.key | test("SourceStore_Directory")) then .key = "QA_SourceStore_Directory" else . end
-                ) // .
-                | .typeProperties.source.parameters |= with_entries(
-                    if (.key | test("DestinationStore_Location")) then .key = "QA_DestinationStore_Location" elif (.key | test("DestinationStore_Directory")) then .key = "QA_DestinationStore_Directory" else . end
-                  ) // .
-              else . end
-            )
-            # update pipeline parameters if present
-            | .properties.parameters |= with_entries(
-                if (.key | test("SourceStore_Location")) then .key = "QA_SourceStore_Location" elif (.key | test("SourceStore_Directory")) then .key = "QA_SourceStore_Directory"
-                elif (.key | test("DestinationStore_Location")) then .key = "QA_DestinationStore_Location" elif (.key | test("DestinationStore_Directory")) then .key = "QA_DestinationStore_Directory"
+            # Safely update linkedServices/datasets parameters within activities, only if activities exist
+            if .properties.activities then
+              .properties.activities |= map(
+                if .type == "Copy" and (.typeProperties? and .typeProperties.source?.parameters?) then
+                  .typeProperties.source.parameters |=
+                    with_entries(
+                      if .key == "SourceStore_Location" then .key = "QA_SourceStore_Location"
+                      elif .key == "SourceStore_Directory" then .key = "QA_SourceStore_Directory"
+                      elif .key == "DestinationStore_Location" then .key = "QA_DestinationStore_Location"
+                      elif .key == "DestinationStore_Directory" then .key = "QA_DestinationStore_Directory"
+                      else . end
+                    )
                 else . end
-              ) // .
+              )
+            else . end
+            # Safely update pipeline parameters if present
+            | if .properties.parameters then
+                .properties.parameters |=
+                  with_entries(
+                    if .key == "SourceStore_Location" then .key = "QA_SourceStore_Location"
+                    elif .key == "SourceStore_Directory" then .key = "QA_SourceStore_Directory"
+                    elif .key == "DestinationStore_Location" then .key = "QA_DestinationStore_Location"
+                    elif .key == "DestinationStore_Directory" then .key = "QA_DestinationStore_Directory"
+                    else . end
+                  )
+              else . end
           ' > pipeline_qa.json
 
       - name: Import Pipeline JSON to QA
