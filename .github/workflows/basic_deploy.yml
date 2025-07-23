@@ -1,41 +1,41 @@
-# name: Deploy ADF to QA
+name: Deploy ADF to QA
 
-# on:
-#   push:
-#     branches:
-#       - adf_publish
+on:
+  push:
+    branches:
+      - adf_publish
 
-# jobs:
-#   deploy:
-#     runs-on: ubuntu-latest
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-#     steps:
-#     - name: Checkout code
-#       uses: actions/checkout@v3
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-#     - name: Login to Azure
-#       uses: azure/login@v1
-#       with:
-#         creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-#     - name: Install Az PowerShell Module
-#       shell: pwsh
-#       run: |
-#         Install-Module -Name Az -Force -Scope CurrentUser -AllowClobber
-#     - name: Explicit PowerShell Login (Workaround)
-#       shell: pwsh
-#       run: |
-#         $creds = $env:AZURE_CREDENTIALS | ConvertFrom-Json
-#         $securePassword = ConvertTo-SecureString $creds.clientSecret -AsPlainText -Force
-#         $psCredential = New-Object System.Management.Automation.PSCredential ($creds.clientId, $securePassword)
-#         Connect-AzAccount -ServicePrincipal -Credential $psCredential -Tenant $creds.tenantId -SubscriptionId $creds.subscriptionId
-#       env:
-#         AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Install Az PowerShell Module
+      shell: pwsh
+      run: |
+        Install-Module -Name Az -Force -Scope CurrentUser -AllowClobber
+    - name: Explicit PowerShell Login (Workaround)
+      shell: pwsh
+      run: |
+        $creds = $env:AZURE_CREDENTIALS | ConvertFrom-Json
+        $securePassword = ConvertTo-SecureString $creds.clientSecret -AsPlainText -Force
+        $psCredential = New-Object System.Management.Automation.PSCredential ($creds.clientId, $securePassword)
+        Connect-AzAccount -ServicePrincipal -Credential $psCredential -Tenant $creds.tenantId -SubscriptionId $creds.subscriptionId
+      env:
+        AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
-#     - name: Deploy ADF resources
-#       uses: Azure/data-factory-deploy-action@v1.2.0
-#       with:
-#         resourceGroupName: 'Test-adf'
-#         dataFactoryName: 'QA-testing-adf'
-#         armTemplateFile: './testing-adf-repo/ARMTemplateForFactory.json'
-#         armTemplateParametersFile: './testing-adf-repo/ARMTemplateParametersForFactory.json'
+    - name: Deploy ADF resources
+      uses: Azure/data-factory-deploy-action@v1.2.0
+      with:
+        resourceGroupName: 'Test-adf'
+        dataFactoryName: 'QA-testing-adf'
+        armTemplateFile: './testing-adf-repo/ARMTemplateForFactory.json'
+        armTemplateParametersFile: './testing-adf-repo/ARMTemplateParametersForFactory.json'

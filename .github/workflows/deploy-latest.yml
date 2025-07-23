@@ -1,89 +1,89 @@
-name: Export and Import Azure Data Factory Pipeline from Dev to QA
+# name: Export and Import Azure Data Factory Pipeline from Dev to QA
 
-on:
-  push:
-    branches:
-      - adf_publish
+# on:
+#   push:
+#     branches:
+#       - adf_publish
 
-env:
-  TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-  SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  TARGET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  RESOURCE_GROUP: Test-adf
-  DEV_FACTORY_NAME: testing-adf-repo
-  TARGET_RESOURCE_GROUP: Test-adf
-  TARGET_FACTORY_NAME: QA-testing-adf
-  TARGET_PIPELINE_NAME: MoveFiles
+# env:
+#   TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+#   CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+#   CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+#   SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#   TARGET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#   RESOURCE_GROUP: Test-adf
+#   DEV_FACTORY_NAME: testing-adf-repo
+#   TARGET_RESOURCE_GROUP: Test-adf
+#   TARGET_FACTORY_NAME: QA-testing-adf
+#   TARGET_PIPELINE_NAME: MoveFiles
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl
+#       - name: Install dependencies
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y jq curl
 
-      - name: Get Azure Access Token
-        id: get_token
-        run: |
-          ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
-            "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
+#       - name: Get Azure Access Token
+#         id: get_token
+#         run: |
+#           ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+#             -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
+#             "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
 
-      - name: Export Pipeline JSON from Dev
-        id: export_pipeline
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-        run: |
-          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            -o pipeline.json
-            echo pipeline.json
+#       - name: Export Pipeline JSON from Dev
+#         id: export_pipeline
+#         env:
+#           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+#         run: |
+#           curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
+#             -H "Authorization: Bearer $ACCESS_TOKEN" \
+#             -H "Content-Type: application/json" \
+#             -o pipeline.json
+#             echo pipeline.json
 
-      - name: Update parameters for QA
-        id: update_json
-        run: |
-          jq '
-            . as $orig |
-            (if ($orig.properties.parameters and ($orig.properties.parameters | type == "object"))
-               then ($orig.properties.parameters | keys)
-               else []
-             end) as $param_keys |
-            if (.properties.parameters and (.properties.parameters | type == "object")) then
-              .properties.parameters |= with_entries(.key |= "QA_" + .)
-            else
-              .
-            end |
-            walk(
-              if type == "string" then
-                reduce $param_keys[] as $p
-                  (.;
-                   gsub("@pipeline\\(\\)\\.parameters\\." + $p; "@pipeline().parameters.QA_" + $p)
-                  )
-              else . end
-            )
-          ' pipeline.json > pipeline_qa.json
-          echo "pipeline_qa.json contents:"
-          cat pipeline_qa.json
-          if grep -q '"error"' pipeline_qa.json; then
-            echo "Pipeline QA JSON is not valid! Contents:"
-            cat pipeline_qa.json
-            exit 1
-          fi
+#       - name: Update parameters for QA
+#         id: update_json
+#         run: |
+#           jq '
+#             . as $orig |
+#             (if ($orig.properties.parameters and ($orig.properties.parameters | type == "object"))
+#                then ($orig.properties.parameters | keys)
+#                else []
+#              end) as $param_keys |
+#             if (.properties.parameters and (.properties.parameters | type == "object")) then
+#               .properties.parameters |= with_entries(.key |= "QA_" + .)
+#             else
+#               .
+#             end |
+#             walk(
+#               if type == "string" then
+#                 reduce $param_keys[] as $p
+#                   (.;
+#                    gsub("@pipeline\\(\\)\\.parameters\\." + $p; "@pipeline().parameters.QA_" + $p)
+#                   )
+#               else . end
+#             )
+#           ' pipeline.json > pipeline_qa.json
+#           echo "pipeline_qa.json contents:"
+#           cat pipeline_qa.json
+#           if grep -q '"error"' pipeline_qa.json; then
+#             echo "Pipeline QA JSON is not valid! Contents:"
+#             cat pipeline_qa.json
+#             exit 1
+#           fi
 
-      - name: Import Pipeline JSON to QA
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-        run: |
-          curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data @pipeline.json
+#       - name: Import Pipeline JSON to QA
+#         env:
+#           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+#         run: |
+#           curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
+#             -H "Authorization: Bearer $ACCESS_TOKEN" \
+#             -H "Content-Type: application/json" \
+#             --data @pipeline.json
