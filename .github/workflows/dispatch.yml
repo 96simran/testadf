@@ -56,30 +56,22 @@ jobs:
         run: |
           cat pipeline.json | \
           jq '
-            # Safely update linkedServices/datasets parameters within activities, only if activities exist
-            if .properties.activities then
+            # Safely update all parameter keys within activities
+            if (.properties.activities and (.properties.activities | type == "array")) then
               .properties.activities |= map(
                 if .type == "Copy" and (.typeProperties? and .typeProperties.source?.parameters?) then
                   .typeProperties.source.parameters |=
                     with_entries(
-                      if .key == "SourceStore_Location" then .key = "QA_SourceStore_Location"
-                      elif .key == "SourceStore_Directory" then .key = "QA_SourceStore_Directory"
-                      elif .key == "DestinationStore_Location" then .key = "QA_DestinationStore_Location"
-                      elif .key == "DestinationStore_Directory" then .key = "QA_DestinationStore_Directory"
-                      else . end
+                      .key |= "QA_" + .
                     )
                 else . end
               )
             else . end
-            # Safely update pipeline parameters if present
-            | if .properties.parameters then
+            # Safely update all pipeline parameter keys
+            | if (.properties.parameters and (.properties.parameters | type == "object")) then
                 .properties.parameters |=
                   with_entries(
-                    if .key == "SourceStore_Location" then .key = "QA_SourceStore_Location"
-                    elif .key == "SourceStore_Directory" then .key = "QA_SourceStore_Directory"
-                    elif .key == "DestinationStore_Location" then .key = "QA_DestinationStore_Location"
-                    elif .key == "DestinationStore_Directory" then .key = "QA_DestinationStore_Directory"
-                    else . end
+                    .key |= "QA_" + .
                   )
               else . end
           ' > pipeline_qa.json
