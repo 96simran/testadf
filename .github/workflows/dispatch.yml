@@ -56,7 +56,7 @@ jobs:
         run: |
           cat pipeline.json | \
           jq '
-            # Safely update all parameter keys within activities
+            # Update all parameter keys in Copy activities if activities exist and are an array
             if (.properties.activities and (.properties.activities | type == "array")) then
               .properties.activities |= map(
                 if .type == "Copy" and (.typeProperties? and .typeProperties.source?.parameters?) then
@@ -67,7 +67,7 @@ jobs:
                 else . end
               )
             else . end
-            # Safely update all pipeline parameter keys
+            # Update all pipeline parameter keys if parameters exist and are an object
             | if (.properties.parameters and (.properties.parameters | type == "object")) then
                 .properties.parameters |=
                   with_entries(

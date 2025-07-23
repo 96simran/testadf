@@ -54,23 +54,24 @@ jobs:
         run: |
           cat pipeline.json | \
           jq '
-            # update linkedServices/datasets parameters within activities
-            .properties.activities |= map(
-              if .type == "Copy" and .typeProperties? then
-                .typeProperties.source.parameters |= with_entries(
-                  if (.key | test("SourceStore_Location")) then .key = "QA_SourceStore_Location" elif (.key | test("SourceStore_Directory")) then .key = "QA_SourceStore_Directory" else . end
-                ) // .
-                | .typeProperties.source.parameters |= with_entries(
-                    if (.key | test("DestinationStore_Location")) then .key = "QA_DestinationStore_Location" elif (.key | test("DestinationStore_Directory")) then .key = "QA_DestinationStore_Directory" else . end
-                  ) // .
-              else . end
-            )
-            # update pipeline parameters if present
-            | .properties.parameters |= with_entries(
-                if (.key | test("SourceStore_Location")) then .key = "QA_SourceStore_Location" elif (.key | test("SourceStore_Directory")) then .key = "QA_SourceStore_Directory"
-                elif (.key | test("DestinationStore_Location")) then .key = "QA_DestinationStore_Location" elif (.key | test("DestinationStore_Directory")) then .key = "QA_DestinationStore_Directory"
+            # Update all parameter keys in Copy activities if activities exist and are an array
+            if (.properties.activities and (.properties.activities | type == "array")) then
+              .properties.activities |= map(
+                if .type == "Copy" and (.typeProperties? and .typeProperties.source?.parameters?) then
+                  .typeProperties.source.parameters |=
+                    with_entries(
+                      .key |= "QA_" + .
+                    )
                 else . end
-              ) // .
+              )
+            else . end
+            # Update all pipeline parameter keys if parameters exist and are an object
+            | if (.properties.parameters and (.properties.parameters | type == "object")) then
+                .properties.parameters |=
+                  with_entries(
+                    .key |= "QA_" + .
+                  )
+              else . end
           ' > pipeline_qa.json
 
       - name: Import Pipeline JSON to QA
