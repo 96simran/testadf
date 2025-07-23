@@ -68,6 +68,8 @@
 				"defaultValue": "loggingfolder/subfolder"
 			}
 		},
-		"annotations": []
-	}
+		"annotations": [],
+		"lastPublishTime": "2025-07-14T15:52:35Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
 }

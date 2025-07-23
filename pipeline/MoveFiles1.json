@@ -1,5 +1,5 @@
 {
-	"name": "MoveFiles",
+	"name": "MoveFiles1",
 	"properties": {
 		"description": "Move files from one folder to another folder",
 		"activities": [
@@ -18,7 +18,7 @@
 				"userProperties": [],
 				"typeProperties": {
 					"dataset": {
-						"referenceName": "BinaryDataSource_Folder",
+						"referenceName": "BinaryDataSource_Folder1",
 						"type": "DatasetReference",
 						"parameters": {
 							"Container": {
@@ -37,6 +37,9 @@
 					"storeSettings": {
 						"type": "AzureBlobStorageReadSettings",
 						"recursive": true
+					},
+					"formatSettings": {
+						"type": "BinaryReadSettings"
 					}
 				}
 			},
@@ -93,7 +96,7 @@
 							},
 							"inputs": [
 								{
-									"referenceName": "BinaryDataSource_File",
+									"referenceName": "BinaryDataSource_File1",
 									"type": "DatasetReference",
 									"parameters": {
 										"Container": {
@@ -113,7 +116,7 @@
 							],
 							"outputs": [
 								{
-									"referenceName": "BinaryDataDestination",
+									"referenceName": "BinaryDataDestination1",
 									"type": "DatasetReference",
 									"parameters": {
 										"Container": {
@@ -154,7 +157,7 @@
 							"userProperties": [],
 							"typeProperties": {
 								"dataset": {
-									"referenceName": "BinaryDataSource_File",
+									"referenceName": "BinaryDataSource_File1",
 									"type": "DatasetReference",
 									"parameters": {
 										"Container": {
@@ -221,7 +224,7 @@
 			}
 		},
 		"annotations": [],
-		"lastPublishTime": "2025-07-14T14:53:14Z"
+		"lastPublishTime": "2025-07-22T12:17:17Z"
 	},
 	"type": "Microsoft.DataFactory/factories/pipelines"
 }

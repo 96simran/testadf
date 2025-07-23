@@ -1,16 +1,19 @@
 {
-	"name": "BinaryDatasetForDeleteActivity",
+	"name": "BinaryDataDestination1",
 	"properties": {
-		"description": "Connect to your source store to delete files.",
+		"description": "It describes the destination store.",
 		"linkedServiceName": {
-			"referenceName": "linkedService1",
+			"referenceName": "devlinkoutputsource",
 			"type": "LinkedServiceReference"
 		},
 		"parameters": {
-			"FolderPath": {
-				"type": "string"
+			"Container": {
+				"type": "String"
 			},
 			"Directory": {
+				"type": "String"
+			},
+			"filename": {
 				"type": "string"
 			}
 		},
@@ -20,11 +23,11 @@
 			"location": {
 				"type": "AzureBlobStorageLocation",
 				"folderPath": {
-					"value": "@dataset().Directory",
+					"value": "@{dataset().Directory}",
 					"type": "Expression"
 				},
 				"container": {
-					"value": "@dataset().FolderPath",
+					"value": "@{dataset().Container}",
 					"type": "Expression"
 				}
 			}
