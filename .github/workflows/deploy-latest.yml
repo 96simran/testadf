@@ -15,7 +15,7 @@ env:
   DEV_FACTORY_NAME: testing-adf-repo
   TARGET_RESOURCE_GROUP: Test-adf
   TARGET_FACTORY_NAME: QA-testing-adf
-  TARGET_PIPELINE_NAME: ${{ github.event.inputs.pipeline_name }}
+  TARGET_PIPELINE_NAME: MoveFiles1
 
 jobs:
   deploy:
@@ -42,7 +42,7 @@ jobs:
       - name: Export Pipeline JSON from Dev
         id: export_pipeline
         run: |
-          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$FACTORY_NAME/pipelines/$PIPELINE_NAME?api-version=2018-06-01" \
+          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
             -o pipeline.json
