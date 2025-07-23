@@ -52,14 +52,16 @@ jobs:
         id: update_json
         run: |
           jq '
-            # 1. Gather original parameter keys
             . as $orig |
-            ($orig.properties.parameters | keys) as $param_keys |
-
-            # 2. Rename all pipeline parameters with "QA_" prefix
-            .properties.parameters |= with_entries(.key |= "QA_" + .) |
-
-            # 3. Walk the whole object, update all string references to pipeline parameters
+            (if ($orig.properties.parameters and ($orig.properties.parameters | type == "object"))
+               then ($orig.properties.parameters | keys)
+               else []
+             end) as $param_keys |
+            if (.properties.parameters and (.properties.parameters | type == "object")) then
+              .properties.parameters |= with_entries(.key |= "QA_" + .)
+            else
+              .
+            end |
             walk(
               if type == "string" then
                 reduce $param_keys[] as $p
@@ -71,7 +73,6 @@ jobs:
           ' pipeline.json > pipeline_qa.json
           echo "pipeline_qa.json contents:"
           cat pipeline_qa.json
-          # Validation: fail if error in transformed file
           if grep -q '"error"' pipeline_qa.json; then
             echo "Pipeline QA JSON is not valid! Contents:"
             cat pipeline_qa.json
