@@ -1,4 +1,4 @@
-name: Deploy ADF to QA via selection
+name: Deploy ADF to QA
 
 on:
   push:
@@ -9,78 +9,33 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # env:
-    #   AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
-    #   RESOURCE_GROUP: Test-adf
-    #   SOURCE_ADF: QA-testing-adf
-    #   PIPELINE_NAME: MoveFiles
-
     steps:
-    # - name: Checkout code
-    #   uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-    - name: Download and deploy ADF pipeline
-      env:
-        TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-        CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-        SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        TARGET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        TARGET_RESOURCE_GROUP: Test-adf
-        TARGET_FACTORY_NAME: QA-testing-adf
-        TARGET_PIPELINE_NAME: MoveFiles
-      run: |
-        # Get token
-        ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
-          -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
-          "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
-       
-        # Export selected pipeline from ADF using REST API and access token
-        RESOURCE_GROUP="Test-adf"
-        FACTORY_NAME="testing-adf-repo"
-        PIPELINE_NAME="MoveFiles"
-        curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$FACTORY_NAME/pipelines/$PIPELINE_NAME?api-version=2018-06-01" \
-          -H "Authorization: Bearer $ACCESS_TOKEN" \
-          -H "Content-Type: application/json" \
-          -o pipeline.json
-          echo pipeline.json
-        
-        # Export linked service
-        jq -r '..|.linkedServiceName? // empty' pipeline.json | sort -u
-        # Export dataset
-        jq -r '[..|.inputs? // empty, ..|.outputs? // empty] | flatten | .[]?.referenceName // empty' pipeline.json | sort -u
-        # Extract linked services
-        LINKED_SERVICES=$(jq -r '..|.linkedServiceName? // empty' pipeline.json | sort -u)
-        for LS in $LINKED_SERVICES; do
-          echo "Exporting linked service: $LS"
-          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$FACTORY_NAME/linkedservices/$LS?api-version=2018-06-01" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            -o "linkedservice_${LS}.json"
-        done
-        
-        # Extract datasets
-        DATASETS=$(jq -r '[..|.inputs? // empty, ..|.outputs? // empty] | flatten | .[]?.referenceName // empty' pipeline.json | sort -u)
-        for DS in $DATASETS; do
-          echo "Exporting dataset: $DS"
-          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$FACTORY_NAME/datasets/$DS?api-version=2018-06-01" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            -o "dataset_${DS}.json"
-        done
-        
-        # Import and publish updated pipeline to QA environment ADF
-        curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
-          -H "Authorization: Bearer $ACCESS_TOKEN" \
-          -H "Content-Type: application/json" \
-          --data @pipeline.json
-
-    - name: upload artifacts
-      uses: actions/upload-artifact@v4
+    - name: Login to Azure
+      uses: azure/login@v1
       with:
-        name: adf_artifacts
-        path: |
-          pipeline.json
-          linkedservice_*.json
-          dataset_*.json  
-        
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Install Az PowerShell Module
+      shell: pwsh
+      run: |
+        Install-Module -Name Az -Force -Scope CurrentUser -AllowClobber
+    - name: Explicit PowerShell Login (Workaround)
+      shell: pwsh
+      run: |
+        $creds = $env:AZURE_CREDENTIALS | ConvertFrom-Json
+        $securePassword = ConvertTo-SecureString $creds.clientSecret -AsPlainText -Force
+        $psCredential = New-Object System.Management.Automation.PSCredential ($creds.clientId, $securePassword)
+        Connect-AzAccount -ServicePrincipal -Credential $psCredential -Tenant $creds.tenantId -SubscriptionId $creds.subscriptionId
+      env:
+        AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy ADF resources
+      uses: Azure/data-factory-deploy-action@v1.2.0
+      with:
+        resourceGroupName: 'Test-adf'
+        dataFactoryName: 'QA-testing-adf'
+        armTemplateFile: './testing-adf-repo/ARMTemplateForFactory.json'
+        armTemplateParametersFile: './testing-adf-repo/ARMTemplateParametersForFactory.json'
