@@ -60,25 +60,24 @@ jobs:
       - name: Update parameters for QA
         id: update_json
         run: |
-          cat pipeline.json | \
           jq '
-            if (.properties.activities and (.properties.activities | type == "array")) then
-              .properties.activities |= map(
-                if .type == "Copy" and (.typeProperties? and .typeProperties.source?.parameters?) then
-                  .typeProperties.source.parameters |=
-                    with_entries(
-                      .key |= "QA_" + .
-                    )
-                else . end
-              )
-            else . end
-            | if (.properties.parameters and (.properties.parameters | type == "object")) then
-                .properties.parameters |=
-                  with_entries(
-                    .key |= "QA_" + .
+            # 1. Gather original parameter keys
+            . as $orig |
+            ($orig.properties.parameters | keys) as $param_keys |
+
+            # 2. Rename all pipeline parameters with "QA_" prefix
+            .properties.parameters |= with_entries(.key |= "QA_" + .) |
+
+            # 3. Walk the whole object, update all string references to pipeline parameters
+            walk(
+              if type == "string" then
+                reduce $param_keys[] as $p
+                  (.;
+                   gsub("@pipeline\\(\\)\\.parameters\\." + $p; "@pipeline().parameters.QA_" + $p)
                   )
               else . end
-          ' > pipeline_qa.json
+            )
+          ' pipeline.json > pipeline_qa.json
           echo "pipeline_qa.json contents:"
           cat pipeline_qa.json
           # Validation: fail if error in transformed file
