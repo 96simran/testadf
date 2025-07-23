@@ -211,16 +211,20 @@
 		],
 		"parameters": {
 			"SourceStore_Location": {
-				"type": "String"
+				"type": "String",
+				"defaultValue": "1"
 			},
 			"SourceStore_Directory": {
-				"type": "String"
+				"type": "String",
+				"defaultValue": "2"
 			},
 			"DestinationStore_Location": {
-				"type": "String"
+				"type": "String",
+				"defaultValue": "3"
 			},
 			"DestinationStore_Directory": {
-				"type": "String"
+				"type": "String",
+				"defaultValue": "4"
 			}
 		},
 		"annotations": [],
