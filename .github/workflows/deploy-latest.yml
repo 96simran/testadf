@@ -13,7 +13,65 @@ jobs:
     # - name: Checkout code
     #   uses: actions/checkout@v3
 
-    - name: Download and deploy ADF pipeline
+    - name: Export and deploy missing Linked Services and Datasets
+      env:
+        TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        TARGET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        RESOURCE_GROUP: Test-adf
+        DEV_FACTORY_NAME: testing-adf-repo
+        TARGET_RESOURCE_GROUP: Test-adf
+        TARGET_FACTORY_NAME: QA-testing-adf
+      run: |
+        set -e
+
+        # Get token
+        ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
+          "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
+
+        # --- Export and deploy missing Linked Services ---
+        LINKED_SERVICES=("devlinkputsource" "devlinkoutputsource")
+        for LS in "${LINKED_SERVICES[@]}"
+        do
+          echo "Processing Linked Service: $LS"
+          # Export from Dev
+          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/linkedservices/$LS?api-version=2018-06-01" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -o linkedservice_$LS.json
+
+          # Rename for QA (replace 'devlink...' with 'qalink...')
+          QA_LS=$(echo $LS | sed 's/^dev/qal/')
+          jq '.name = "'$QA_LS'"' linkedservice_$LS.json > linkedservice_${QA_LS}.json
+
+          # Import into QA
+          curl -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/linkedservices/$QA_LS?api-version=2018-06-01" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @linkedservice_${QA_LS}.json
+        done
+
+        # --- Export and deploy any missing Datasets (e.g. binarydatasource_folder) ---
+        DATASETS_MISSING=("binarydatasource_folder")
+        for DS in "${DATASETS_MISSING[@]}"
+        do
+          echo "Processing Missing Dataset: $DS"
+          # Export from Dev
+          curl -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/datasets/$DS?api-version=2018-06-01" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -o dataset_$DS.json
+          # Import into QA
+          curl -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/datasets/$DS?api-version=2018-06-01" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @dataset_$DS.json
+        done
+
+    - name: Download and deploy ADF pipeline and referenced Datasets
       env:
         TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -26,7 +84,7 @@ jobs:
         TARGET_FACTORY_NAME: QA-testing-adf
         TARGET_PIPELINE_NAME: MoveFiles1
       run: |
-        # set -e
+        set -e
 
         # Get token
         ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
@@ -91,3 +149,4 @@ jobs:
         path: |
           pipeline.json
           dataset_*.json
+          linkedservice_*.json
