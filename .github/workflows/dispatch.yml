@@ -1,9 +1,12 @@
 name: Export and Import Azure Data Factory Pipeline from Dev to QA
 
 on:
-  push:
-    branches:
-      - adf_publish
+  workflow_dispatch:
+    inputs:
+      pipeline_name:
+        description: 'Pipeline to migrate'
+        required: true
+        default: 'MoveFiles1'
 
 env:
   TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -18,9 +21,8 @@ env:
   TARGET_PIPELINE_NAME: ${{ github.event.inputs.pipeline_name }}
 
 jobs:
-  deploy:
+  export-import-adf-pipeline:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
