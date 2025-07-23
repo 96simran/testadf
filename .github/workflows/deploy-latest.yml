@@ -84,17 +84,7 @@ jobs:
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
         run: |
-          echo "Deploying to:"
-          echo "  Subscription: $TARGET_SUBSCRIPTION_ID"
-          echo "  Resource Group: $TARGET_RESOURCE_GROUP"
-          echo "  Factory Name: $TARGET_FACTORY_NAME"
-          echo "  Pipeline Name: $TARGET_PIPELINE_NAME"
-          echo "pipeline_qa.json contents:"
-          cat pipeline_qa.json
-          echo "Request URL:"
-          echo "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01"
-          RESPONSE=$(curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
-          -H "Authorization: Bearer $ACCESS_TOKEN" \
-          -H "Content-Type: application/json" \
-          --data @pipeline.json)
-          echo "$RESPONSE"
+          curl -X PUT "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @pipeline.json
