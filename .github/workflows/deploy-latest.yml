@@ -56,27 +56,16 @@ jobs:
             exit 1
           fi 
 
-      - name: Update parameters for QA
+      - name: Update referenceNames for QA
         id: update_json
         run: |
           jq '
-            . as $orig |
-            (if ($orig.properties.parameters and ($orig.properties.parameters | type == "object"))
-               then ($orig.properties.parameters | keys)
-               else []
-             end) as $param_keys |
-            if (.properties.parameters and (.properties.parameters | type == "object")) then
-              .properties.parameters |= with_entries(.key |= "QA_" + .)
-            else
-              .
-            end |
+            [.. | objects | select(has("referenceName")) | .referenceName] | unique as $ref_names |
             walk(
-              if type == "string" then
-                reduce $param_keys[] as $p
-                  (.;
-                   gsub("@pipeline\\(\\)\\.parameters\\." + $p; "@pipeline().parameters.QA_" + $p)
-                  )
-              else . end
+              if type == "object" and has("referenceName") then
+                .referenceName |= "QA_" + .
+              else .
+              end
             )
           ' pipeline.json > pipeline_qa.json
           echo "pipeline_qa.json contents:"
