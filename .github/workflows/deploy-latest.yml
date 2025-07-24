@@ -14,7 +14,7 @@ env:
   DEV_FACTORY_NAME: testing-adf-repo
   TARGET_RESOURCE_GROUP: Test-adf
   TARGET_FACTORY_NAME: QA-testing-adf
-  TARGET_PIPELINE_NAME: MoveFiles
+  TARGET_PIPELINE_NAME: MoveFiles1
   API_VERSION: 2018-06-01
 
 jobs:
