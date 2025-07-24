@@ -5,6 +5,15 @@
 		"factoryName": {
 			"value": "testing-adf-repo"
 		},
+		"AzureBlobStorage1_connectionString": {
+			"value": ""
+		},
+		"devlinkinputsource_connectionString": {
+			"value": ""
+		},
+		"devlinkoutputsource_connectionString": {
+			"value": ""
+		},
 		"linkedService1_connectionString": {
 			"value": ""
 		},

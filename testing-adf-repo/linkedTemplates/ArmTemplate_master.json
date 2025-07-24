@@ -7,6 +7,18 @@
 			"metadata": "Data Factory name",
 			"defaultValue": "testing-adf-repo"
 		},
+		"AzureBlobStorage1_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'AzureBlobStorage1'"
+		},
+		"devlinkinputsource_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'devlinkinputsource'"
+		},
+		"devlinkoutputsource_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'devlinkoutputsource'"
+		},
 		"linkedService1_connectionString": {
 			"type": "secureString",
 			"metadata": "Secure string for 'connectionString' of 'linkedService1'"
@@ -41,6 +53,15 @@
 				"parameters": {
 					"factoryName": {
 						"value": "[parameters('factoryName')]"
+					},
+					"AzureBlobStorage1_connectionString": {
+						"value": "[parameters('AzureBlobStorage1_connectionString')]"
+					},
+					"devlinkinputsource_connectionString": {
+						"value": "[parameters('devlinkinputsource_connectionString')]"
+					},
+					"devlinkoutputsource_connectionString": {
+						"value": "[parameters('devlinkoutputsource_connectionString')]"
 					},
 					"linkedService1_connectionString": {
 						"value": "[parameters('linkedService1_connectionString')]"
