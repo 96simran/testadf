@@ -1,4 +1,4 @@
-name: Promote ADF Pipeline and Datasets from Dev to QA
+name: Promote ADF Pipeline from Dev to QA (QA datasets only)
 
 on:
   push:
@@ -16,7 +16,6 @@ env:
   TARGET_FACTORY_NAME: QA-testing-adf
   TARGET_PIPELINE_NAME: MoveFiles
   API_VERSION: 2018-06-01
-  DATASETS_DIR: qa_datasets
 
 jobs:
   promote:
@@ -55,68 +54,61 @@ jobs:
             exit 1
           fi
 
-      - name: Find referenced datasets and export from Dev
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-          DATASETS_DIR: ${{ env.DATASETS_DIR }}
-          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
-          RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
-          DEV_FACTORY_NAME: ${{ env.DEV_FACTORY_NAME }}
-          API_VERSION: ${{ env.API_VERSION }}
+      - name: Prefix referenceNames in inputs/outputs for QA
         run: |
-          mkdir -p "$DATASETS_DIR"
-          # Extract unique referenced dataset names
-          jq -r '.. | objects | select(has("referenceName")) | .referenceName' pipeline.json | sort -u > referenced_datasets.txt
-          echo "Referenced datasets:"
-          cat referenced_datasets.txt
-
-          # Export and QA-rename each dataset
-          while read ds; do
-            # Export from Dev
-            curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/datasets/$ds?api-version=$API_VERSION" \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              -H "Content-Type: application/json" \
-              -o "$DATASETS_DIR/$ds.json"
-            if grep -q '"error"' "$DATASETS_DIR/$ds.json"; then
-              echo "Failed to export dataset $ds"
-              cat "$DATASETS_DIR/$ds.json"
-              exit 1
-            fi
-            # Rename dataset name inside JSON
-            jq --arg newname "QA_$ds" '.name = $newname' "$DATASETS_DIR/$ds.json" > "$DATASETS_DIR/QA_$ds.json"
-          done < referenced_datasets.txt
-
-      - name: Deploy all QA datasets to QA Data Factory
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-          DATASETS_DIR: ${{ env.DATASETS_DIR }}
-          TARGET_RESOURCE_GROUP: ${{ env.TARGET_RESOURCE_GROUP }}
-          TARGET_FACTORY_NAME: ${{ env.TARGET_FACTORY_NAME }}
-          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
-          API_VERSION: ${{ env.API_VERSION }}
-        run: |
-          for f in $DATASETS_DIR/QA_*.json; do
-            dsname=$(jq -r '.name' "$f")
-            echo "Deploying dataset: $dsname"
-            curl -s -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/datasets/$dsname?api-version=$API_VERSION" \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              -H "Content-Type: application/json" \
-              --data @"$f" | tee deploy_output.json
-            if grep -q '"error"' deploy_output.json; then
-              echo "Failed to deploy dataset $dsname"
-              cat deploy_output.json
-              exit 1
-            fi
-          done
-
-      - name: Prefix all referenceNames in pipeline JSON
-        run: |
-          jq 'walk(
-            if type == "object" and has("referenceName") then
-              .referenceName |= "QA_" + .
-            else .
-            end
-          )' pipeline.json > pipeline_qa.json
+          jq '
+            . as $root |
+            # For every activity in the pipeline
+            (.properties.activities // []) |= map(
+              # For top-level activity
+              (
+                # update "inputs" if it exists
+                if has("inputs") then
+                  .inputs |= map(
+                    if has("referenceName") then
+                      .referenceName |= "QA_" + .
+                    else .
+                    end
+                  )
+                else .
+                end |
+                # update "outputs" if it exists
+                if has("outputs") then
+                  .outputs |= map(
+                    if has("referenceName") then
+                      .referenceName |= "QA_" + .
+                    else .
+                    end
+                  )
+                else .
+                end |
+                # For ForEach: update inner activities
+                if .type == "ForEach" and (.typeProperties.activities // null) then
+                  .typeProperties.activities |= map(
+                    if has("inputs") then
+                      .inputs |= map(
+                        if has("referenceName") then
+                          .referenceName |= "QA_" + .
+                        else .
+                        end
+                      )
+                    else .
+                    end |
+                    if has("outputs") then
+                      .outputs |= map(
+                        if has("referenceName") then
+                          .referenceName |= "QA_" + .
+                        else .
+                        end
+                      )
+                    else .
+                    end
+                  )
+                else .
+                end
+              )
+            )
+          ' pipeline.json > pipeline_qa.json
           cat pipeline_qa.json
           if grep -q '"error"' pipeline_qa.json; then
             echo "Pipeline QA JSON is not valid! Contents:"
@@ -150,5 +142,3 @@ jobs:
           path: |
             pipeline.json
             pipeline_qa.json
-            referenced_datasets.txt
-            qa_datasets/*.json
