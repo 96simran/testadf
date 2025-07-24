@@ -59,15 +59,12 @@ jobs:
       - name: Update referenceNames for QA
         id: update_json
         run: |
-          jq '
-            [.. | objects | select(has("referenceName")) | .referenceName] | unique as $ref_names |
-            walk(
-              if type == "object" and has("referenceName") then
-                .referenceName |= "QA_" + .
-              else .
-              end
-            )
-          ' pipeline.json > pipeline_qa.json
+          jq 'walk(
+            if type == "object" and has("referenceName") then
+              .referenceName |= "QA_" + .
+            else .
+            end
+          )' pipeline.json > pipeline_qa.json
           echo "pipeline_qa.json contents:"
           cat pipeline_qa.json
           if grep -q '"error"' pipeline_qa.json; then
