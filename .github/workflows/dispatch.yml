@@ -1,28 +1,29 @@
-name: Export and Import Azure Data Factory Pipeline from Dev to QA
+name: Promote ADF Pipeline to QA and Check User-Input Linked Services
 
 on:
   workflow_dispatch:
     inputs:
-      pipeline_name:
-        description: 'Pipeline to migrate'
+      linked_services:
+        description: 'Comma-separated list of linked service names to check in QA'
         required: true
-        default: 'MoveFiles1'
+        default: 'AzureBlobStorage,AzureSqlDatabase'
 
 env:
   TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
   CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
   SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  TARGET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   RESOURCE_GROUP: Test-adf
   DEV_FACTORY_NAME: testing-adf-repo
   TARGET_RESOURCE_GROUP: Test-adf
   TARGET_FACTORY_NAME: QA-testing-adf
-  TARGET_PIPELINE_NAME: ${{ github.event.inputs.pipeline_name }}
+  TARGET_PIPELINE_NAME: MoveFiles1
+  API_VERSION: 2018-06-01
 
 jobs:
-  export-import-adf-pipeline:
+  promote:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,68 +36,82 @@ jobs:
       - name: Get Azure Access Token
         id: get_token
         run: |
-          ACCESS_TOKEN=$(curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+          ACCESS_TOKEN=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
             -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
             "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
           echo "::add-mask::$ACCESS_TOKEN"
-          echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
+          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Export Pipeline JSON from Dev
+      - name: Export pipeline from Dev
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
         run: |
-          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=2018-06-01" \
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
             -o pipeline.json
-
-          echo "Exported pipeline.json:"
           cat pipeline.json
           if grep -q '"error"' pipeline.json; then
             echo "Failed to export pipeline! Contents of pipeline.json:"
             cat pipeline.json
             exit 1
-          fi  
+          fi
 
-      - name: Update parameters for QA
-        id: update_json
+      - name: Parse user input linked service names
+        id: parse_input
         run: |
-          cat pipeline.json | \
-          jq '
-            # Update all parameter keys in Copy activities if activities exist and are an array
-            if (.properties.activities and (.properties.activities | type == "array")) then
-              .properties.activities |= map(
-                if .type == "Copy" and (.typeProperties? and .typeProperties.source?.parameters?) then
-                  .typeProperties.source.parameters |=
-                    with_entries(
-                      .key |= "QA_" + .
-                    )
-                else . end
-              )
-            else . end
-            # Update all pipeline parameter keys if parameters exist and are an object
-            | if (.properties.parameters and (.properties.parameters | type == "object")) then
-                .properties.parameters |=
-                  with_entries(
-                    .key |= "QA_" + .
-                  )
-              else . end
-          ' > pipeline_qa.json
+          echo "${{ github.event.inputs.linked_services }}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -u > required_linked_services.txt
+          echo "Linked services to check:"
+          cat required_linked_services.txt
 
-      - name: Import Pipeline JSON to QA
+      - name: Get existing linked service names in QA env
+        env:
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
         run: |
-          export ACCESS_TOKEN=${{ steps.get_token.outputs.access_token }}
-          RESPONSE=$(curl -s -X PUT \
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/linkedservices?api-version=$API_VERSION" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
-            --data @pipeline_qa.json \
-            "https://management.azure.com/subscriptions/$TARGET_SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/${{ env.TARGET_PIPELINE_NAME }}?api-version=2018-06-01")
-          echo "$RESPONSE"
+            -o qa_linked_services_list.json
+          jq -r '.value[].name' qa_linked_services_list.json | sort -u > existing_qa_linked_services.txt
+          echo "Existing QA linked services:"
+          cat existing_qa_linked_services.txt
 
-      - name: upload artifacts
+      - name: Fail if any user-input QA linked services are missing
+        run: |
+          missing=$(comm -23 required_linked_services.txt existing_qa_linked_services.txt || true)
+          if [ -n "$missing" ]; then
+            echo "The following linked services are missing in the QA environment:"
+            echo "$missing"
+            exit 1
+          else
+            echo "All user-input linked services are present in the QA environment."
+          fi
+
+      - name: Deploy pipeline to QA Data Factory
+        env:
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+          TARGET_RESOURCE_GROUP: ${{ env.TARGET_RESOURCE_GROUP }}
+          TARGET_FACTORY_NAME: ${{ env.TARGET_FACTORY_NAME }}
+          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
+          API_VERSION: ${{ env.API_VERSION }}
+          TARGET_PIPELINE_NAME: ${{ env.TARGET_PIPELINE_NAME }}
+        run: |
+          curl -s -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @pipeline.json | tee deploy_output.json
+          if grep -q '"error"' deploy_output.json; then
+            echo "Failed to deploy pipeline"
+            cat deploy_output.json
+            exit 1
+          fi
+
+      - name: Upload all artifacts
         uses: actions/upload-artifact@v4
         with:
           name: adf_artifacts
           path: |
-              pipeline.json
-              pipeline_qa.json
+            pipeline.json
+            required_linked_services.txt
+            existing_qa_linked_services.txt
+            
