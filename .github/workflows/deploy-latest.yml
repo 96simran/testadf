@@ -1,12 +1,9 @@
-name: Promote
+name: Promote ADF Pipeline to QA and Check User-Input Linked Services
 
 on:
-  workflow_dispatch:
-    inputs:
-      linked_services:
-        description: 'Comma-separated list of linked service names to check in QA'
-        required: true
-        default: 'AzureBlobStorage,AzureSqlDatabase'
+  push:
+    branches:
+      - adf_publish
 
 env:
   TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -19,6 +16,8 @@ env:
   TARGET_FACTORY_NAME: QA-testing-adf
   TARGET_PIPELINE_NAME: MoveFiles1
   API_VERSION: 2018-06-01
+  QALINKSERVICEINPUT: qalinkserviceinput  # Set your default or override in repo/Actions secrets
+  QALINKSERVICEOUTPUT: qalinkserviceoutput # Set your default or override in repo/Actions secrets
 
 jobs:
   promote:
@@ -57,10 +56,11 @@ jobs:
             exit 1
           fi
 
-      - name: Parse user input linked service names
-        id: parse_input
+      - name: Prepare required linked service names from environment variables
         run: |
-          echo "${{ github.event.inputs.linked_services }}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -u > required_linked_services.txt
+          echo "$QALINKSERVICEINPUT" > required_linked_services.txt
+          echo "$QALINKSERVICEOUTPUT" >> required_linked_services.txt
+          sort -u required_linked_services.txt -o required_linked_services.txt
           echo "Linked services to check:"
           cat required_linked_services.txt
 
@@ -76,7 +76,7 @@ jobs:
           echo "Existing QA linked services:"
           cat existing_qa_linked_services.txt
 
-      - name: Fail if any user-input QA linked services are missing
+      - name: Fail if any required QA linked services are missing
         run: |
           missing=$(comm -23 required_linked_services.txt existing_qa_linked_services.txt || true)
           if [ -n "$missing" ]; then
@@ -84,17 +84,12 @@ jobs:
             echo "$missing"
             exit 1
           else
-            echo "All user-input linked services are present in the QA environment."
+            echo "All required linked services are present in the QA environment."
           fi
 
       - name: Deploy pipeline to QA Data Factory
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-          TARGET_RESOURCE_GROUP: ${{ env.TARGET_RESOURCE_GROUP }}
-          TARGET_FACTORY_NAME: ${{ env.TARGET_FACTORY_NAME }}
-          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
-          API_VERSION: ${{ env.API_VERSION }}
-          TARGET_PIPELINE_NAME: ${{ env.TARGET_PIPELINE_NAME }}
         run: |
           curl -s -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
