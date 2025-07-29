@@ -1,111 +1,111 @@
-name: Promote ADF Pipeline to QA and Check User-Input Linked Services
+# name: Promote ADF Pipeline to QA and Check User-Input Linked Services
 
-on:
-  push:
-    branches:
-      - adf_publish
+# on:
+#   push:
+#     branches:
+#       - adf_publish
 
-env:
-  TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-  SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  RESOURCE_GROUP: Test-adf
-  DEV_FACTORY_NAME: testing-adf-repo
-  TARGET_RESOURCE_GROUP: Test-adf
-  TARGET_FACTORY_NAME: QA-testing-adf
-  TARGET_PIPELINE_NAME: MoveFiles1
-  API_VERSION: 2018-06-01
-  QALINKSERVICEINPUT: qalinkserviceinput  # Set your default or override in repo/Actions secrets
-  QALINKSERVICEOUTPUT: qalinkserviceoutput # Set your default or override in repo/Actions secrets
+# env:
+#   TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+#   CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+#   CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+#   SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#   RESOURCE_GROUP: Test-adf
+#   DEV_FACTORY_NAME: testing-adf-repo
+#   TARGET_RESOURCE_GROUP: Test-adf
+#   TARGET_FACTORY_NAME: QA-testing-adf
+#   TARGET_PIPELINE_NAME: MoveFiles1
+#   API_VERSION: 2018-06-01
+#   QALINKSERVICEINPUT: qalinkserviceinput  # Set your default or override in repo/Actions secrets
+#   QALINKSERVICEOUTPUT: qalinkserviceoutput # Set your default or override in repo/Actions secrets
 
-jobs:
-  promote:
-    runs-on: ubuntu-latest
+# jobs:
+#   promote:
+#     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl
+#       - name: Install dependencies
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y jq curl
 
-      - name: Get Azure Access Token
-        id: get_token
-        run: |
-          ACCESS_TOKEN=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
-            "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
-          echo "::add-mask::$ACCESS_TOKEN"
-          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+#       - name: Get Azure Access Token
+#         id: get_token
+#         run: |
+#           ACCESS_TOKEN=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+#             -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
+#             "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
+#           echo "::add-mask::$ACCESS_TOKEN"
+#           echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Export pipeline from Dev
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-        run: |
-          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            -o pipeline.json
-          cat pipeline.json
-          if grep -q '"error"' pipeline.json; then
-            echo "Failed to export pipeline! Contents of pipeline.json:"
-            cat pipeline.json
-            exit 1
-          fi
+#       - name: Export pipeline from Dev
+#         env:
+#           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+#         run: |
+#           curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
+#             -H "Authorization: Bearer $ACCESS_TOKEN" \
+#             -H "Content-Type: application/json" \
+#             -o pipeline.json
+#           cat pipeline.json
+#           if grep -q '"error"' pipeline.json; then
+#             echo "Failed to export pipeline! Contents of pipeline.json:"
+#             cat pipeline.json
+#             exit 1
+#           fi
 
-      - name: Prepare required linked service names from environment variables
-        run: |
-          echo "$QALINKSERVICEINPUT" > required_linked_services.txt
-          echo "$QALINKSERVICEOUTPUT" >> required_linked_services.txt
-          sort -u required_linked_services.txt -o required_linked_services.txt
-          echo "Linked services to check:"
-          cat required_linked_services.txt
+#       - name: Prepare required linked service names from environment variables
+#         run: |
+#           echo "$QALINKSERVICEINPUT" > required_linked_services.txt
+#           echo "$QALINKSERVICEOUTPUT" >> required_linked_services.txt
+#           sort -u required_linked_services.txt -o required_linked_services.txt
+#           echo "Linked services to check:"
+#           cat required_linked_services.txt
 
-      - name: Get existing linked service names in QA env
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-        run: |
-          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/linkedservices?api-version=$API_VERSION" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            -o qa_linked_services_list.json
-          jq -r '.value[].name' qa_linked_services_list.json | sort -u > existing_qa_linked_services.txt
-          echo "Existing QA linked services:"
-          cat existing_qa_linked_services.txt
+#       - name: Get existing linked service names in QA env
+#         env:
+#           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+#         run: |
+#           curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/linkedservices?api-version=$API_VERSION" \
+#             -H "Authorization: Bearer $ACCESS_TOKEN" \
+#             -H "Content-Type: application/json" \
+#             -o qa_linked_services_list.json
+#           jq -r '.value[].name' qa_linked_services_list.json | sort -u > existing_qa_linked_services.txt
+#           echo "Existing QA linked services:"
+#           cat existing_qa_linked_services.txt
 
-      - name: Fail if any required QA linked services are missing
-        run: |
-          missing=$(comm -23 required_linked_services.txt existing_qa_linked_services.txt || true)
-          if [ -n "$missing" ]; then
-            echo "The following linked services are missing in the QA environment:"
-            echo "$missing"
-            exit 1
-          else
-            echo "All required linked services are present in the QA environment."
-          fi
+#       - name: Fail if any required QA linked services are missing
+#         run: |
+#           missing=$(comm -23 required_linked_services.txt existing_qa_linked_services.txt || true)
+#           if [ -n "$missing" ]; then
+#             echo "The following linked services are missing in the QA environment:"
+#             echo "$missing"
+#             exit 1
+#           else
+#             echo "All required linked services are present in the QA environment."
+#           fi
 
-      - name: Deploy pipeline to QA Data Factory
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-        run: |
-          curl -s -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data @pipeline.json | tee deploy_output.json
-          if grep -q '"error"' deploy_output.json; then
-            echo "Failed to deploy pipeline"
-            cat deploy_output.json
-            exit 1
-          fi
+#       - name: Deploy pipeline to QA Data Factory
+#         env:
+#           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+#         run: |
+#           curl -s -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
+#             -H "Authorization: Bearer $ACCESS_TOKEN" \
+#             -H "Content-Type: application/json" \
+#             --data @pipeline.json | tee deploy_output.json
+#           if grep -q '"error"' deploy_output.json; then
+#             echo "Failed to deploy pipeline"
+#             cat deploy_output.json
+#             exit 1
+#           fi
 
-      - name: Upload all artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: adf_artifacts
-          path: |
-            pipeline.json
-            required_linked_services.txt
-            existing_qa_linked_services.txt
+#       - name: Upload all artifacts
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: adf_artifacts
+#           path: |
+#             pipeline.json
+#             required_linked_services.txt
+#             existing_qa_linked_services.txt
