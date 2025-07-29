@@ -1,9 +1,12 @@
-name: Promote ADF Pipeline to QA using QA_ prefixed datasets
+name: Promote ADF Pipeline to QA and Check User-Input Linked Services
 
 on:
-  push:
-    branches:
-      - adf_publish
+  workflow_dispatch:
+    inputs:
+      linked_services:
+        description: 'Comma-separated list of linked service names to check in QA'
+        required: true
+        default: 'AzureBlobStorage,AzureSqlDatabase'
 
 env:
   TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -54,55 +57,37 @@ jobs:
             exit 1
           fi
 
-      - name: Prefix all referenceNames in JSON for QA (use QA_ datasets)
+      - name: Parse user input linked service names
+        id: parse_input
         run: |
-          jq 'walk(
-              if type == "object" and has("referenceName") and (.referenceName | startswith("QA_") | not) then
-                .referenceName |= "QA_" + .
-              else .
-              end
-            )' pipeline.json > pipeline_qa.json
-          cat pipeline_qa.json
-          if grep -q '"error"' pipeline_qa.json; then
-            echo "Pipeline QA JSON is not valid! Contents:"
-            cat pipeline_qa.json
-            exit 1
-          fi
+          echo "${{ github.event.inputs.linked_services }}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -u > required_linked_services.txt
+          echo "Linked services to check:"
+          cat required_linked_services.txt
 
-      - name: Extract required QA dataset names
-        run: |
-          jq -r '.. | objects | select(has("referenceName")) | .referenceName' pipeline_qa.json | sort -u > required_qa_datasets.txt
-          echo "Required QA datasets:"
-          cat required_qa_datasets.txt
-
-      - name: Get existing dataset names in QA env
+      - name: Get existing linked service names in QA env
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-          TARGET_RESOURCE_GROUP: ${{ env.TARGET_RESOURCE_GROUP }}
-          TARGET_FACTORY_NAME: ${{ env.TARGET_FACTORY_NAME }}
-          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
-          API_VERSION: ${{ env.API_VERSION }}
         run: |
-          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/datasets?api-version=$API_VERSION" \
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/linkedservices?api-version=$API_VERSION" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
-            -o qa_datasets_list.json
-          jq -r '.value[].name' qa_datasets_list.json | sort -u > existing_qa_datasets.txt
-          echo "Existing QA datasets:"
-          cat existing_qa_datasets.txt
+            -o qa_linked_services_list.json
+          jq -r '.value[].name' qa_linked_services_list.json | sort -u > existing_qa_linked_services.txt
+          echo "Existing QA linked services:"
+          cat existing_qa_linked_services.txt
 
-      - name: Fail if any required QA datasets are missing
+      - name: Fail if any user-input QA linked services are missing
         run: |
-          missing=$(comm -23 required_qa_datasets.txt existing_qa_datasets.txt || true)
+          missing=$(comm -23 required_linked_services.txt existing_qa_linked_services.txt || true)
           if [ -n "$missing" ]; then
-            echo "The following required QA datasets are missing in the QA environment:"
+            echo "The following linked services are missing in the QA environment:"
             echo "$missing"
             exit 1
           else
-            echo "All required QA datasets are present in the QA environment."
+            echo "All user-input linked services are present in the QA environment."
           fi
 
-      - name: Deploy QA pipeline to QA Data Factory
+      - name: Deploy pipeline to QA Data Factory
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
           TARGET_RESOURCE_GROUP: ${{ env.TARGET_RESOURCE_GROUP }}
@@ -114,7 +99,7 @@ jobs:
           curl -s -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
-            --data @pipeline_qa.json | tee deploy_output.json
+            --data @pipeline.json | tee deploy_output.json
           if grep -q '"error"' deploy_output.json; then
             echo "Failed to deploy pipeline"
             cat deploy_output.json
@@ -127,6 +112,5 @@ jobs:
           name: adf_artifacts
           path: |
             pipeline.json
-            pipeline_qa.json
-            required_qa_datasets.txt
-            existing_qa_datasets.txt
+            required_linked_services.txt
+            existing_qa_linked_services.txt
