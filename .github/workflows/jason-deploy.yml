@@ -1,99 +1,147 @@
-name: Deploy Selected ADF Pipeline
+name: Promote ADF Pipeline to QA with Input Validation
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-# on:
-#   workflow_dispatch:
-#     inputs:
-#       pipeline_name:
-#         description: 'Name of the pipeline to deploy (case-sensitive)'
-#         required: true
-#         default: 'MyPipeline'
+  workflow_dispatch:
+    inputs:
+      qalinkserviceinput:
+        description: 'Name of the linked service to check in QA'
+        required: true
+        default: 'AzureBlobStorage'
+      qalinkserviceoutput:
+        description: 'Name of the output linked service to check in QA'
+        required: true
+        default: 'AzureSqlDatabase'
+      qadatasetinput:
+        description: 'Name of the input dataset to check in QA'
+        required: true
+        default: 'binarydatasource_folder1'
+      qadatasetoutput:
+        description: 'Name of the output dataset to check in QA'
+        required: true
+        default: 'azuresqldatasetfolder1'
+
+env:
+  TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  RESOURCE_GROUP: Test-adf
+  DEV_FACTORY_NAME: testing-adf-repo
+  TARGET_RESOURCE_GROUP: Test-adf
+  TARGET_FACTORY_NAME: QA-testing-adf
+  TARGET_PIPELINE_NAME: MoveFiles1
+  API_VERSION: 2018-06-01
 
 jobs:
-  deploy-pipeline:
+  promote:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout current repo (source ADF)
-      - name: Checkout source repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Authenticate with Azure
-      - name: Login to Azure
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Install Az PowerShell Module
-        shell: pwsh
+      - name: Install dependencies
         run: |
-          Install-Module -Name Az -Force -Scope CurrentUser -AllowClobber
+          sudo apt-get update
+          sudo apt-get install -y jq curl
 
-      - name: Explicit PowerShell Login (Workaround)
-        shell: pwsh
+      - name: Get Azure Access Token
+        id: get_token
         run: |
-          $creds = $env:AZURE_CREDENTIALS | ConvertFrom-Json
-          $securePassword = ConvertTo-SecureString $creds.clientSecret -AsPlainText -Force
-          $psCredential = New-Object System.Management.Automation.PSCredential ($creds.clientId, $securePassword)
-          Connect-AzAccount -ServicePrincipal -Credential $psCredential -Tenant $creds.tenantId -SubscriptionId $creds.subscriptionId
+          ACCESS_TOKEN=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&resource=https://management.azure.com/" \
+            "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" | jq -r .access_token)
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Export pipeline from Dev
         env:
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
-
-      # - name: Install Azure Data Factory Extension
-      #   run: |
-      #     az extension add --name datafactory
-      # # Copy selected pipeline and its dependencies
-
-      - name: Copy selected pipeline and dependencies
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
         run: |
-          mkdir -p selected_adf_content
-          cp pipeline/"MoveFiles".json selected_adf_content/
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -o pipeline.json
+          cat pipeline.json
+          if grep -q '"error"' pipeline.json; then
+            echo "Failed to export pipeline! Contents of pipeline.json:"
+            cat pipeline.json
+            exit 1
+          fi
 
-      # Deploy linked services
-      - name: Deploy linked services
+      - name: Prepare lists of required linked services and datasets from input
         run: |
-          for file in linkedService/*.json; do
-            service_name=$(jq -r '.name' "$file")
-            properties=$(jq -r '.properties' "$file")
-            if [ "$properties" == "null" ]; then
-              echo "Error: Invalid linked service payload in $file. Skipping..."
-              continue
-            fi
-            echo "Deploying linked service: $service_name"
-            az datafactory linked-service create \
-              --factory-name QA-testing-adf \
-              --resource-group Test-adf \
-              --name "$service_name" \
-              --properties @"$file"
-          done
+          echo "${{ github.event.inputs.qalinkserviceinput }}" > required_linked_services.txt
+          echo "${{ github.event.inputs.qalinkserviceoutput }}" >> required_linked_services.txt
+          sort -u required_linked_services.txt -o required_linked_services.txt
 
-      # Deploy datasets
-      - name: Deploy datasets
-        run: |
-          for file in dataset/*.json; do
-            dataset_name=$(jq -r '.name' "$file")
-            properties=$(jq -r '.properties' "$file")
-            if [ "$properties" == "null" ]; then
-              echo "Error: Invalid dataset payload in $file. Skipping..."
-              continue
-            fi
-            echo "Deploying dataset: $dataset_name"
-            az datafactory dataset create \
-              --factory-name QA-testing-adf \
-              --resource-group Test-adf \
-              --name "$dataset_name" \
-              --properties @"$file"
-          done
+          echo "${{ github.event.inputs.qadatasetinput }}" > required_datasets.txt
+          echo "${{ github.event.inputs.qadatasetoutput }}" >> required_datasets.txt
+          sort -u required_datasets.txt -o required_datasets.txt
 
-      # Deploy pipeline to target ADF
-      - name: Deploy pipeline to target ADF
+      - name: Check for required linked services in QA
+        env:
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
         run: |
-          az datafactory pipeline create \
-            --factory-name QA-testing-adf \
-            --resource-group Test-adf \
-            --name "MoveFiles" \
-            --pipeline "@selected_adf_content/MoveFiles.json"
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/linkedservices?api-version=$API_VERSION" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -o qa_linked_services_list.json
+          jq -r '.value[].name' qa_linked_services_list.json | sort -u > existing_qa_linked_services.txt
+          echo "Existing QA linked services:"
+          cat existing_qa_linked_services.txt
+
+          missing=$(comm -23 required_linked_services.txt existing_qa_linked_services.txt || true)
+          if [ -n "$missing" ]; then
+            echo "The following linked services are missing in the QA environment:"
+            echo "$missing"
+            exit 1
+          else
+            echo "All input linked services are present in the QA environment."
+          fi
+
+      - name: Check for required datasets in QA
+        env:
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+        run: |
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/datasets?api-version=$API_VERSION" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -o qa_datasets_list.json
+          jq -r '.value[].name' qa_datasets_list.json | sort -u > existing_qa_datasets.txt
+          echo "Existing QA datasets:"
+          cat existing_qa_datasets.txt
+
+          missing=$(comm -23 required_datasets.txt existing_qa_datasets.txt || true)
+          if [ -n "$missing" ]; then
+            echo "The following datasets are missing in the QA environment:"
+            echo "$missing"
+            exit 1
+          else
+            echo "All input datasets are present in the QA environment."
+          fi
+
+      - name: Deploy pipeline to QA Data Factory
+        env:
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+        run: |
+          curl -s -X PUT "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/pipelines/$TARGET_PIPELINE_NAME?api-version=$API_VERSION" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @pipeline.json | tee deploy_output.json
+          if grep -q '"error"' deploy_output.json; then
+            echo "Failed to deploy pipeline"
+            cat deploy_output.json
+            exit 1
+          fi
+
+      - name: Upload all artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: adf_artifacts
+          path: |
+            pipeline.json
+            required_linked_services.txt
+            required_datasets.txt
+            existing_qa_linked_services.txt
+            existing_qa_datasets.txt
