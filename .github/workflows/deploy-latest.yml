@@ -1,4 +1,4 @@
-name: Promote ADF Pipeline to QA using QA_ linked services
+name: Promote ADF Pipeline to QA using QA_ linked services (mapping datasets)
 
 on:
   push:
@@ -17,7 +17,7 @@ env:
   TARGET_PIPELINE_NAME: Delete_files
   API_VERSION: 2018-06-01
   QA_LINKED_SERVICE_NAME: QA_AzureBlobStorage_migrate
-  
+
 jobs:
   promote:
     runs-on: ubuntu-latest
