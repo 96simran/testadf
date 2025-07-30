@@ -39,8 +39,6 @@ jobs:
           echo "::add-mask::$ACCESS_TOKEN"
           echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
 
-      # ...previous steps (checkout, install dependencies, get token)
-
       - name: List all pipelines in DEV Data Factory (for troubleshooting)
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
