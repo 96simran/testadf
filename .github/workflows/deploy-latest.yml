@@ -16,7 +16,8 @@ env:
   TARGET_FACTORY_NAME: QA-testing-adf
   TARGET_PIPELINE_NAME: Delete_files
   API_VERSION: 2018-06-01
-
+  QA_LINKED_SERVICE_NAME: QA_AzureBlobStorage_migrate
+  
 jobs:
   promote:
     runs-on: ubuntu-latest
@@ -39,19 +40,6 @@ jobs:
           echo "::add-mask::$ACCESS_TOKEN"
           echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
 
-      - name: List all pipelines in DEV Data Factory (for troubleshooting)
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
-          RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
-          DEV_FACTORY_NAME: ${{ env.DEV_FACTORY_NAME }}
-          API_VERSION: ${{ env.API_VERSION }}
-        run: |
-          echo "Listing all pipelines in DEV Data Factory for debugging:"
-          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines?api-version=$API_VERSION" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" | jq -r '.value[].name'    
-
       - name: Export pipeline from Dev
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
@@ -67,94 +55,75 @@ jobs:
             exit 1
           fi
 
-      - name: Replace Dev linked service with QA in pipeline JSON
-        run: |
-          jq 'walk(
-              if type == "object" and has("linkedServiceName") and (.linkedServiceName | type == "object") and (.linkedServiceName.referenceName | startswith("Dev_")) then
-                .linkedServiceName.referenceName |= sub("^Dev_"; "QA_")
-              else .
-              end
-            )' pipeline.json > pipeline_qa_linked.json
-          cat pipeline_qa_linked.json
-          if grep -q '"error"' pipeline_qa_linked.json; then
-            echo "Pipeline QA LinkedService JSON is not valid! Contents:"
-            cat pipeline_qa_linked.json
-            exit 1
-          fi
-
-      - name: Extract referenced QA linked service names
-        run: |
-          jq -r '.. | objects | select(has("linkedServiceName")) | .linkedServiceName.referenceName' pipeline_qa_linked.json | sort -u > used_qa_linked_services.txt
-          echo "QA linked services used in pipeline:"
-          cat used_qa_linked_services.txt
-
-      - name: Get all datasets in QA environment
+      - name: Get all datasets in DEV and QA environment
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+          RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
+          DEV_FACTORY_NAME: ${{ env.DEV_FACTORY_NAME }}
           TARGET_RESOURCE_GROUP: ${{ env.TARGET_RESOURCE_GROUP }}
           TARGET_FACTORY_NAME: ${{ env.TARGET_FACTORY_NAME }}
           SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
           API_VERSION: ${{ env.API_VERSION }}
         run: |
+          # Get DEV
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/datasets?api-version=$API_VERSION" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" | jq -r '.value[].name' | sort -u > dev_datasets.txt
+          echo "DEV datasets:"; cat dev_datasets.txt
+          # Get QA
           curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/datasets?api-version=$API_VERSION" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            -o qa_datasets_list.json
-          jq -r '.value[].name' qa_datasets_list.json | sort -u > all_qa_datasets.txt
-          echo "All datasets in QA environment:"
-          cat all_qa_datasets.txt
+            -H "Authorization: Bearer $ACCESS_TOKEN" | jq -r '.value[].name' | sort -u > qa_datasets.txt
+          echo "QA datasets:"; cat qa_datasets.txt
 
-      - name: Get datasets associated with QA linked service(s)
+      - name: Build dataset mapping (Dev to QA)
+        run: |
+          # Assumed naming: Dev_XYZ -> QA_XYZ or dev_xyz -> QA_xyz, case-insensitive
+          > dataset_map.txt
+          while read dev; do
+            # Try to find a QA dataset that matches after replacing Dev_ with QA_ (case-insensitive)
+            qa_match=$(grep -i "^QA_$(echo "${dev#Dev_}" | sed 's/^dev_//I')" qa_datasets.txt | head -n1)
+            if [ -n "$qa_match" ]; then
+              echo "$dev,$qa_match" >> dataset_map.txt
+            fi
+          done < dev_datasets.txt
+          echo "Dataset mapping (Dev to QA):"
+          cat dataset_map.txt
+
+      - name: Replace linked service and dataset references in pipeline with mapped QA names
         env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-          TARGET_RESOURCE_GROUP: ${{ env.TARGET_RESOURCE_GROUP }}
-          TARGET_FACTORY_NAME: ${{ env.TARGET_FACTORY_NAME }}
-          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
-          API_VERSION: ${{ env.API_VERSION }}
+          QA_LINKED_SERVICE_NAME: ${{ env.QA_LINKED_SERVICE_NAME }}
         run: |
-          > qa_datasets_with_qa_linked_service.txt
-          while read dataset; do
-            curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/datasets/$dataset?api-version=$API_VERSION" \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              -H "Content-Type: application/json" \
-              -o dataset.json
-            for ls in $(cat used_qa_linked_services.txt); do
-              if jq -e --arg ls "$ls" '.properties.linkedServiceName.referenceName == $ls' dataset.json > /dev/null; then
-                echo "$dataset" >> qa_datasets_with_qa_linked_service.txt
-              fi
-            done
-          done < all_qa_datasets.txt
-          sort -u qa_datasets_with_qa_linked_service.txt -o qa_datasets_with_qa_linked_service.txt
-          echo "QA datasets associated with QA linked service(s):"
-          cat qa_datasets_with_qa_linked_service.txt
-
-      # --------- FIX: set dataset and linked service reference names correctly ---------
-      - name: Set dataset and linkedService references correctly
-        run: |
-          qa_dataset=$(head -n 1 qa_datasets_with_qa_linked_service.txt)
-          qa_linked_service=$(head -n 1 used_qa_linked_services.txt)
-          if [ -z "$qa_dataset" ] || [ -z "$qa_linked_service" ]; then
-            echo "QA dataset or QA linked service not found."
-            exit 1
-          fi
-
-          jq --arg qa_dataset "$qa_dataset" --arg qa_linked_service "$qa_linked_service" '
-            walk(
-              if type == "object" and has("referenceName") and has("type") then
-                if .type == "DatasetReference" then
-                  .referenceName = $qa_dataset
-                elif .type == "LinkedServiceReference" then
-                  .referenceName = $qa_linked_service
-                else
-                  .
-                end
-              else .
+          # Build jq code for dataset replacements
+          jq_script='walk(
+            if type == "object" and has("referenceName") and has("type") then
+              if .type == "LinkedServiceReference" then
+                .referenceName = env.QA_LINKED_SERVICE_NAME
+              elif .type == "DatasetReference" then
+                # Placeholder for mapping logic
+                .referenceName = .referenceName
+              else
+                .
               end
-            )
-          ' pipeline_qa_linked.json > pipeline_qa_final.json
+            else .
+            end
+          )'
+          jq "$jq_script" pipeline.json > pipeline_mapped.json
+
+          # Now, replace dataset referenceNames per mapping
+          cp pipeline_mapped.json pipeline_qa_final.json
+          while IFS=, read -r dev qa; do
+            # Replace all references matching the DEV dataset with the mapped QA dataset
+            tmpfile=$(mktemp)
+            jq --arg dev "$dev" --arg qa "$qa" '
+              walk(
+                if type == "object" and has("referenceName") and has("type") and .type == "DatasetReference" and .referenceName == $dev then
+                  .referenceName = $qa
+                else .
+                end
+              )
+            ' pipeline_qa_final.json > "$tmpfile" && mv "$tmpfile" pipeline_qa_final.json
+          done < dataset_map.txt
 
           cat pipeline_qa_final.json
-      # -------------------------------------------------------------------------------
 
       - name: Deploy pipeline to QA Data Factory
         env:
@@ -181,8 +150,8 @@ jobs:
           name: adf_artifacts
           path: |
             pipeline.json
-            pipeline_qa_linked.json
+            pipeline_mapped.json
             pipeline_qa_final.json
-            used_qa_linked_services.txt
-            all_qa_datasets.txt
-            qa_datasets_with_qa_linked_service.txt
+            dev_datasets.txt
+            qa_datasets.txt
+            dataset_map.txt
