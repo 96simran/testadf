@@ -131,33 +131,23 @@ jobs:
           echo "QA datasets associated with QA linked service(s):"
           cat qa_datasets_with_qa_linked_service.txt
 
-      # Replace dataset references in pipeline JSON with QA datasets
+      # Replace dataset references in pipeline with QA datasets (explicit mapping by name)
       - name: Replace dataset references in pipeline with QA datasets
         run: |
-          # Read all QA datasets associated with the QA linked service into an array
-          mapfile -t qa_datasets < qa_datasets_with_qa_linked_service.txt
-
-          # List all referenceNames in the pipeline (in order)
-          mapfile -t original_refs < <(jq -r '.. | objects | select(has("referenceName")) | .referenceName' pipeline_qa_linked.json)
-
-          # If the number of references and available QA datasets match, do a 1-to-1 replacement
-          if [ "${#qa_datasets[@]}" -eq "${#original_refs[@]}" ]; then
-            tmp_json="pipeline_qa_linked.json"
-            for i in "${!original_refs[@]}"; do
-              orig="${original_refs[$i]}"
-              repl="${qa_datasets[$i]}"
-              tmp_out="pipeline_qa_final.json"
-              jq --arg orig "$orig" --arg repl "$repl" '(.. | objects | select(has("referenceName")) | select(.referenceName == $orig) | .referenceName) |= $repl' "$tmp_json" > "$tmp_out"
-              mv "$tmp_out" "$tmp_json"
-            done
-            mv "$tmp_json" pipeline_qa_final.json
-          else
-            # Otherwise, just use the original pipeline (no replacement)
-            cp pipeline_qa_linked.json pipeline_qa_final.json
-            echo "WARNING: Number of QA datasets != number of references; skipping replacement."
+          cp pipeline_qa_linked.json pipeline_qa_final.json
+          # For each dataset in the pipeline, if the same name exists in the QA dataset list, leave as is.
+          # If not, fail and display a helpful message.
+          missing=0
+          for ds in $(jq -r '.. | objects | select(has("referenceName")) | .referenceName' pipeline_qa_final.json | sort -u); do
+            if ! grep -Fxq "$ds" qa_datasets_with_qa_linked_service.txt; then
+              echo "ERROR: Dataset '$ds' referenced in pipeline but not found in QA datasets associated with the QA linked service."
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "One or more datasets are missing in QA. Please create them before deploying the pipeline."
+            exit 1
           fi
-
-          cat pipeline_qa_final.json
 
       # Deploy pipeline to QA Data Factory
       - name: Deploy pipeline to QA Data Factory
