@@ -39,6 +39,21 @@ jobs:
           echo "::add-mask::$ACCESS_TOKEN"
           echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
 
+      # ...previous steps (checkout, install dependencies, get token)
+
+      - name: List all pipelines in DEV Data Factory (for troubleshooting)
+        env:
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
+          RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
+          DEV_FACTORY_NAME: ${{ env.DEV_FACTORY_NAME }}
+          API_VERSION: ${{ env.API_VERSION }}
+        run: |
+          echo "Listing all pipelines in DEV Data Factory for debugging:"
+          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/pipelines?api-version=$API_VERSION" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" | jq -r '.value[].name'    
+
       - name: Export pipeline from Dev
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
