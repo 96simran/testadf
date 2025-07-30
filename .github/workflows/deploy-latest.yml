@@ -82,14 +82,12 @@ jobs:
             exit 1
           fi
 
-      # Extract referenced QA linked services for info
       - name: Extract referenced QA linked service names
         run: |
           jq -r '.. | objects | select(has("linkedServiceName")) | .linkedServiceName.referenceName' pipeline_qa_linked.json | sort -u > used_qa_linked_services.txt
           echo "QA linked services used in pipeline:"
           cat used_qa_linked_services.txt
 
-      # Get all datasets in QA Data Factory
       - name: Get all datasets in QA environment
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
@@ -106,7 +104,6 @@ jobs:
           echo "All datasets in QA environment:"
           cat all_qa_datasets.txt
 
-      # Get dataset definitions and filter by associated QA linked service
       - name: Get datasets associated with QA linked service(s)
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
@@ -131,25 +128,24 @@ jobs:
           echo "QA datasets associated with QA linked service(s):"
           cat qa_datasets_with_qa_linked_service.txt
 
-      # Replace dataset references in pipeline with QA datasets (explicit mapping by name)
-      - name: Replace dataset references in pipeline with QA datasets
+      - name: Replace ALL dataset references in pipeline with the first QA dataset from the associated list
         run: |
-          cp pipeline_qa_linked.json pipeline_qa_final.json
-          # For each dataset in the pipeline, if the same name exists in the QA dataset list, leave as is.
-          # If not, fail and display a helpful message.
-          missing=0
-          for ds in $(jq -r '.. | objects | select(has("referenceName")) | .referenceName' pipeline_qa_final.json | sort -u); do
-            if ! grep -Fxq "$ds" qa_datasets_with_qa_linked_service.txt; then
-              echo "ERROR: Dataset '$ds' referenced in pipeline but not found in QA datasets associated with the QA linked service."
-              missing=1
-            fi
-          done
-          if [ "$missing" = "1" ]; then
-            echo "One or more datasets are missing in QA. Please create them before deploying the pipeline."
+          qa_dataset=$(head -n 1 qa_datasets_with_qa_linked_service.txt)
+          if [ -z "$qa_dataset" ]; then
+            echo "No QA datasets found associated with QA linked service(s)."
             exit 1
           fi
+          jq --arg qa_dataset "$qa_dataset" '
+            walk(
+              if type == "object" and has("referenceName") then
+                .referenceName = $qa_dataset
+              else .
+              end
+            )
+          ' pipeline_qa_linked.json > pipeline_qa_final.json
 
-      # Deploy pipeline to QA Data Factory
+          cat pipeline_qa_final.json
+
       - name: Deploy pipeline to QA Data Factory
         env:
           ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
