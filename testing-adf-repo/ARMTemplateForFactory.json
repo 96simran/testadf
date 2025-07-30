@@ -11,6 +11,10 @@
 			"type": "secureString",
 			"metadata": "Secure string for 'connectionString' of 'AzureBlobStorage1'"
 		},
+		"Dev_AzureBlobStorage_migrate_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'Dev_AzureBlobStorage_migrate'"
+		},
 		"devlinkinputsource_connectionString": {
 			"type": "secureString",
 			"metadata": "Secure string for 'connectionString' of 'devlinkinputsource'"
@@ -196,6 +200,88 @@
 			"dependsOn": [
 				"[concat(variables('factoryId'), '/datasets/BinaryDatasetForDeleteActivity1')]",
 				"[concat(variables('factoryId'), '/linkedServices/linkedService2')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/Delete_files')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Please input a folder path as the parameter for this pipeline, and the pipeline will delete files which were last modified more than 30 days ago under the particular folder path.",
+				"activities": [
+					{
+						"name": "DeleteFiles",
+						"description": "Connect to your storage account to save the log file.",
+						"type": "Delete",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "7.00:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "BinaryDatasetForDeleteActivity2",
+								"type": "DatasetReference",
+								"parameters": {
+									"FolderPath": {
+										"value": "@pipeline().parameters.SourceFolder",
+										"type": "Expression"
+									},
+									"Directory": {
+										"value": "@pipeline().parameters.SourceDirectory",
+										"type": "Expression"
+									}
+								}
+							},
+							"logStorageSettings": {
+								"linkedServiceName": {
+									"referenceName": "Dev_AzureBlobStorage_migrate",
+									"type": "LinkedServiceReference"
+								},
+								"path": {
+									"value": "@pipeline().parameters.LoggingPath",
+									"type": "Expression"
+								}
+							},
+							"enableLogging": true,
+							"storeSettings": {
+								"type": "AzureBlobStorageReadSettings",
+								"recursive": true,
+								"modifiedDatetimeEnd": {
+									"value": "@{adddays(pipeline().TriggerTime, -30)}",
+									"type": "Expression"
+								},
+								"wildcardFileName": "*"
+							}
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"SourceFolder": {
+						"type": "string",
+						"defaultValue": "sourcefolder"
+					},
+					"SourceDirectory": {
+						"type": "string",
+						"defaultValue": "subfolder"
+					},
+					"LoggingPath": {
+						"type": "string",
+						"defaultValue": "loggingfolder/subfolder"
+					}
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/BinaryDatasetForDeleteActivity2')]",
+				"[concat(variables('factoryId'), '/linkedServices/Dev_AzureBlobStorage_migrate')]"
 			]
 		},
 		{
@@ -432,7 +518,7 @@
 					}
 				},
 				"annotations": [],
-				"lastPublishTime": "2025-07-14T14:53:14Z"
+				"lastPublishTime": "2025-07-24T12:14:33Z"
 			},
 			"dependsOn": [
 				"[concat(variables('factoryId'), '/datasets/BinaryDataSource_Folder')]",
@@ -462,18 +548,9 @@
 						"userProperties": [],
 						"typeProperties": {
 							"dataset": {
-								"referenceName": "BinaryDataSource_Folder1",
+								"referenceName": "Binary2",
 								"type": "DatasetReference",
-								"parameters": {
-									"Container": {
-										"value": "@pipeline().parameters.SourceStore_Location",
-										"type": "Expression"
-									},
-									"Directory": {
-										"value": "@pipeline().parameters.SourceStore_Directory",
-										"type": "Expression"
-									}
-								}
+								"parameters": {}
 							},
 							"fieldList": [
 								"childItems"
@@ -674,7 +751,7 @@
 				"lastPublishTime": "2025-07-22T12:17:17Z"
 			},
 			"dependsOn": [
-				"[concat(variables('factoryId'), '/datasets/BinaryDataSource_Folder1')]",
+				"[concat(variables('factoryId'), '/datasets/Binary2')]",
 				"[concat(variables('factoryId'), '/datasets/BinaryDataSource_File1')]",
 				"[concat(variables('factoryId'), '/datasets/BinaryDataDestination1')]"
 			]
@@ -699,6 +776,27 @@
 			},
 			"dependsOn": [
 				"[concat(variables('factoryId'), '/linkedServices/AzureBlobStorage1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/Binary2')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "linkedService1",
+					"type": "LinkedServiceReference"
+				},
+				"annotations": [],
+				"type": "Binary",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobStorageLocation"
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/linkedService1')]"
 			]
 		},
 		{
@@ -1026,6 +1124,44 @@
 			]
 		},
 		{
+			"name": "[concat(parameters('factoryName'), '/BinaryDatasetForDeleteActivity2')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Connect to your source store to delete files.",
+				"linkedServiceName": {
+					"referenceName": "Dev_AzureBlobStorage_migrate",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"FolderPath": {
+						"type": "string"
+					},
+					"Directory": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "Binary",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobStorageLocation",
+						"folderPath": {
+							"value": "@dataset().Directory",
+							"type": "Expression"
+						},
+						"container": {
+							"value": "@dataset().FolderPath",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/Dev_AzureBlobStorage_migrate')]"
+			]
+		},
+		{
 			"name": "[concat(parameters('factoryName'), '/AzureBlobStorage1')]",
 			"type": "Microsoft.DataFactory/factories/linkedServices",
 			"apiVersion": "2018-06-01",
@@ -1034,6 +1170,19 @@
 				"type": "AzureBlobStorage",
 				"typeProperties": {
 					"connectionString": "[parameters('AzureBlobStorage1_connectionString')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/Dev_AzureBlobStorage_migrate')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobStorage",
+				"typeProperties": {
+					"connectionString": "[parameters('Dev_AzureBlobStorage_migrate_connectionString')]"
 				}
 			},
 			"dependsOn": []
