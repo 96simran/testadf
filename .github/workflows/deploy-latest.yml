@@ -128,23 +128,33 @@ jobs:
           echo "QA datasets associated with QA linked service(s):"
           cat qa_datasets_with_qa_linked_service.txt
 
-      - name: Replace ALL dataset references in pipeline with the first QA dataset from the associated list
+      # --------- FIX: set dataset and linked service reference names correctly ---------
+      - name: Set dataset and linkedService references correctly
         run: |
           qa_dataset=$(head -n 1 qa_datasets_with_qa_linked_service.txt)
-          if [ -z "$qa_dataset" ]; then
-            echo "No QA datasets found associated with QA linked service(s)."
+          qa_linked_service=$(head -n 1 used_qa_linked_services.txt)
+          if [ -z "$qa_dataset" ] || [ -z "$qa_linked_service" ]; then
+            echo "QA dataset or QA linked service not found."
             exit 1
           fi
-          jq --arg qa_dataset "$qa_dataset" '
+
+          jq --arg qa_dataset "$qa_dataset" --arg qa_linked_service "$qa_linked_service" '
             walk(
-              if type == "object" and has("referenceName") then
-                .referenceName = $qa_dataset
+              if type == "object" and has("referenceName") and has("type") then
+                if .type == "DatasetReference" then
+                  .referenceName = $qa_dataset
+                elif .type == "LinkedServiceReference" then
+                  .referenceName = $qa_linked_service
+                else
+                  .
+                end
               else .
               end
             )
           ' pipeline_qa_linked.json > pipeline_qa_final.json
 
           cat pipeline_qa_final.json
+      # -------------------------------------------------------------------------------
 
       - name: Deploy pipeline to QA Data Factory
         env:
