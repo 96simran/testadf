@@ -1,4 +1,4 @@
-name: Promote ADF Pipeline to QA using QA_ linked services (mapping datasets)
+name: Promote ADF Pipeline to QA using QA_ linked services
 
 on:
   push:
@@ -55,74 +55,18 @@ jobs:
             exit 1
           fi
 
-      - name: Get all datasets in DEV and QA environment
-        env:
-          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
-          RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
-          DEV_FACTORY_NAME: ${{ env.DEV_FACTORY_NAME }}
-          TARGET_RESOURCE_GROUP: ${{ env.TARGET_RESOURCE_GROUP }}
-          TARGET_FACTORY_NAME: ${{ env.TARGET_FACTORY_NAME }}
-          SUBSCRIPTION_ID: ${{ env.SUBSCRIPTION_ID }}
-          API_VERSION: ${{ env.API_VERSION }}
-        run: |
-          # Get DEV
-          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$DEV_FACTORY_NAME/datasets?api-version=$API_VERSION" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" | jq -r '.value[].name' | sort -u > dev_datasets.txt
-          echo "DEV datasets:"; cat dev_datasets.txt
-          # Get QA
-          curl -s -X GET "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$TARGET_RESOURCE_GROUP/providers/Microsoft.DataFactory/factories/$TARGET_FACTORY_NAME/datasets?api-version=$API_VERSION" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" | jq -r '.value[].name' | sort -u > qa_datasets.txt
-          echo "QA datasets:"; cat qa_datasets.txt
-
-      - name: Build dataset mapping (Dev to QA)
-        run: |
-          # Assumed naming: Dev_XYZ -> QA_XYZ or dev_xyz -> QA_xyz, case-insensitive
-          > dataset_map.txt
-          while read dev; do
-            # Try to find a QA dataset that matches after replacing Dev_ with QA_ (case-insensitive)
-            qa_match=$(grep -i "^QA_$(echo "${dev#Dev_}" | sed 's/^dev_//I')" qa_datasets.txt | head -n1)
-            if [ -n "$qa_match" ]; then
-              echo "$dev,$qa_match" >> dataset_map.txt
-            fi
-          done < dev_datasets.txt
-          echo "Dataset mapping (Dev to QA):"
-          cat dataset_map.txt
-
-      - name: Replace linked service and dataset references in pipeline with mapped QA names
+      - name: Replace all linked service references in pipeline to QA linked service
         env:
           QA_LINKED_SERVICE_NAME: ${{ env.QA_LINKED_SERVICE_NAME }}
         run: |
-          # Build jq code for dataset replacements
-          jq_script='walk(
-            if type == "object" and has("referenceName") and has("type") then
-              if .type == "LinkedServiceReference" then
-                .referenceName = env.QA_LINKED_SERVICE_NAME
-              elif .type == "DatasetReference" then
-                # Placeholder for mapping logic
-                .referenceName = .referenceName
-              else
-                .
+          jq --arg qa_linked_service "$QA_LINKED_SERVICE_NAME" '
+            walk(
+              if type == "object" and has("linkedServiceName") and (.linkedServiceName | type == "object") then
+                .linkedServiceName.referenceName = $qa_linked_service
+              else .
               end
-            else .
-            end
-          )'
-          jq "$jq_script" pipeline.json > pipeline_mapped.json
-
-          # Now, replace dataset referenceNames per mapping
-          cp pipeline_mapped.json pipeline_qa_final.json
-          while IFS=, read -r dev qa; do
-            # Replace all references matching the DEV dataset with the mapped QA dataset
-            tmpfile=$(mktemp)
-            jq --arg dev "$dev" --arg qa "$qa" '
-              walk(
-                if type == "object" and has("referenceName") and has("type") and .type == "DatasetReference" and .referenceName == $dev then
-                  .referenceName = $qa
-                else .
-                end
-              )
-            ' pipeline_qa_final.json > "$tmpfile" && mv "$tmpfile" pipeline_qa_final.json
-          done < dataset_map.txt
-
+            )
+          ' pipeline.json > pipeline_qa_final.json
           cat pipeline_qa_final.json
 
       - name: Deploy pipeline to QA Data Factory
@@ -150,9 +94,4 @@ jobs:
           name: adf_artifacts
           path: |
             pipeline.json
-            pipeline_mapped.json
             pipeline_qa_final.json
-            dev_datasets.txt
-            qa_datasets.txt
-            dataset_map.txt
-            
